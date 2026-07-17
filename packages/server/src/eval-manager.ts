@@ -43,7 +43,7 @@ export interface EvalSummary {
   id: string;
   suiteId: string;
   suiteName: string;
-  provider: "mock" | "anthropic" | "ollama";
+  provider: "mock" | "anthropic" | "ollama" | "claude-cli";
   repeats: number;
   status: "running" | "completed";
   createdAt: number;
@@ -62,7 +62,7 @@ export type EvalMessage =
 
 export interface CreateEvalParams {
   suiteId: string;
-  provider: "mock" | "anthropic" | "ollama";
+  provider: "mock" | "anthropic" | "ollama" | "claude-cli";
   repeats: number;
 }
 

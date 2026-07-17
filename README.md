@@ -38,7 +38,10 @@ LoopForge runs the same agent loop against three interchangeable providers:
 
 - **Mock** — scripted, deterministic; its tool calls execute for real. No setup.
 - **Local (Ollama)** — a real model, no API key, no cost. Install [Ollama](https://ollama.com), `ollama pull llama3`, and pick **Local (Ollama · llama3)** in the dashboard. Because these local models don't support native tool-calling, `OllamaProvider` uses a **ReAct-style JSON adapter** so any completion model can drive the loop.
-- **Anthropic** — the Claude API. Copy `.env.example` to `.env` (gitignored) and set `ANTHROPIC_API_KEY=sk-ant-...`; the server auto-loads it. Then pick the **anthropic** provider (defaults to `claude-opus-4-8`).
+- **Claude CLI (local account)** — drives the locally-installed Claude Code CLI (`claude -p`) as a model backend, using whatever account the CLI is logged into — **a real frontier model with no separate API key**. `ClaudeCliProvider` disables the CLI's own tools and hands it the same ReAct planner prompt, so `claude -p` acts as a single-turn model whose JSON action LoopForge's loop executes against the sandbox/game tools. Each iteration is one `claude -p` call, so this uses real account quota — it's for showcasing a frontier model locally, not cheap high-volume runs.
+- **Anthropic** — the Claude API directly. Copy `.env.example` to `.env` (gitignored) and set `ANTHROPIC_API_KEY=sk-ant-...`; the server auto-loads it. Then pick the **anthropic** provider (defaults to `claude-opus-4-8`).
+
+All four providers share one agent loop; the two local ones (Ollama, Claude CLI) share the `providers/react.ts` adapter.
 
 Every provider works in both the Runs view and the Eval harness. Running the demo suite under a real local model produces an honest capability profile — e.g. llama3 reliably solves the coding bug-fix but not Sokoban, so the eval lands at 50%.
 

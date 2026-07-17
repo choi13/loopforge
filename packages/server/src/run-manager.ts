@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   AgentLoop,
   AnthropicProvider,
+  ClaudeCliProvider,
   MockProvider,
   OllamaProvider,
   type ModelProvider,
@@ -11,7 +12,7 @@ import {
 } from "@loopforge/core";
 
 /** Providers a run can be driven by. */
-export type ProviderName = "mock" | "anthropic" | "ollama";
+export type ProviderName = "mock" | "anthropic" | "ollama" | "claude-cli";
 import {
   createEnvironment,
   type EnvironmentName,
@@ -125,9 +126,14 @@ export class RunManager {
       effectiveTask = env.demoTask;
     } else {
       // Real model providers. Ollama runs a local model (no API key / cost);
-      // Anthropic calls the Claude API.
+      // claude-cli drives the local Claude Code CLI on its logged-in account
+      // (no API key); Anthropic calls the Claude API directly.
       modelProvider =
-        provider === "ollama" ? new OllamaProvider() : new AnthropicProvider();
+        provider === "ollama"
+          ? new OllamaProvider()
+          : provider === "claude-cli"
+            ? new ClaudeCliProvider()
+            : new AnthropicProvider();
       // Runs may omit the task (e.g. sokoban); fall back to the demo task.
       if (!effectiveTask) effectiveTask = env.demoTask;
     }

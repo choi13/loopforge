@@ -32,7 +32,7 @@ export function NewRunForm({ onStart }: Props) {
     ? MOCK_PLACEHOLDERS[environment]
     : environment === "sokoban"
       ? "Optional — leave empty for the standard Sokoban task"
-      : provider === "ollama"
+      : provider === "ollama" || provider === "claude-cli"
         ? "Optional — leave empty for the standard bug-fix task"
         : "Describe the task for the agent…";
 
@@ -88,6 +88,7 @@ export function NewRunForm({ onStart }: Props) {
       >
         <option value="mock">Mock (scripted demo)</option>
         <option value="ollama">Local (Ollama · llama3)</option>
+        <option value="claude-cli">Claude CLI (local account)</option>
         <option value="anthropic">Anthropic (live API)</option>
       </select>
 

@@ -7,3 +7,4 @@ export * from "./coding-tools";
 export { MockProvider, type MockStep } from "./providers/mock";
 export { AnthropicProvider } from "./providers/anthropic";
 export { OllamaProvider } from "./providers/ollama";
+export { ClaudeCliProvider } from "./providers/claude-cli";

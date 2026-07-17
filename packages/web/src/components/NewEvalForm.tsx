@@ -98,6 +98,7 @@ export function NewEvalForm({ suites, onCreate }: Props) {
       >
         <option value="mock">Mock (scripted demo)</option>
         <option value="ollama">Local (Ollama · llama3)</option>
+        <option value="claude-cli">Claude CLI (local account)</option>
         <option value="anthropic">Anthropic (live API)</option>
       </select>
 

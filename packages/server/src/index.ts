@@ -57,10 +57,15 @@ app.post("/api/runs", (req, res) => {
     typeof body === "object" && body !== null
       ? (body as { provider?: unknown }).provider
       : undefined;
-  if (provider !== "mock" && provider !== "anthropic" && provider !== "ollama") {
-    res
-      .status(400)
-      .json({ error: 'provider must be "mock", "anthropic", or "ollama"' });
+  if (
+    provider !== "mock" &&
+    provider !== "anthropic" &&
+    provider !== "ollama" &&
+    provider !== "claude-cli"
+  ) {
+    res.status(400).json({
+      error: 'provider must be "mock", "anthropic", "ollama", or "claude-cli"',
+    });
     return;
   }
 
@@ -126,10 +131,15 @@ app.post("/api/evals", (req, res) => {
       : undefined;
 
   const provider = get("provider");
-  if (provider !== "mock" && provider !== "anthropic" && provider !== "ollama") {
-    res
-      .status(400)
-      .json({ error: 'provider must be "mock", "anthropic", or "ollama"' });
+  if (
+    provider !== "mock" &&
+    provider !== "anthropic" &&
+    provider !== "ollama" &&
+    provider !== "claude-cli"
+  ) {
+    res.status(400).json({
+      error: 'provider must be "mock", "anthropic", "ollama", or "claude-cli"',
+    });
     return;
   }
 
