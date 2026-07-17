@@ -129,6 +129,11 @@ export function buildTimeline(events: TraceEvent[]): TimelineVM {
       case "run_finished":
         vm.finished = e;
         break;
+
+      default:
+        // env_state (owned by the environment board panel) and any future
+        // event types are intentionally not part of iteration cards.
+        break;
     }
   }
 

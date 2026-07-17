@@ -11,15 +11,33 @@ export type { TraceEvent, TokenUsage, RunStatus, ToolCallRef } from "../../core/
 
 export type Provider = "mock" | "anthropic";
 
+export type Environment = "coding" | "sokoban";
+
 export interface RunSummary {
   id: string;
   task: string;
   provider: string;
+  environment: Environment;
   model: string;
   status: RunStatus;
   createdAt: number;
   iterations: number;
   usage: TokenUsage;
+}
+
+/**
+ * Payload of `env_state` events for sokoban runs. Coordinates are
+ * [x, y] pairs — x = column from the left, y = row from the top, 0-based.
+ */
+export interface SokobanState {
+  width: number;
+  height: number;
+  walls: [number, number][];
+  goals: [number, number][];
+  boxes: [number, number][];
+  player: [number, number];
+  moveCount: number;
+  solved: boolean;
 }
 
 /** Messages pushed by the server over ws://…/ws */

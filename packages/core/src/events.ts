@@ -77,6 +77,17 @@ export type TraceEvent =
       at: number;
     }
   | {
+      /**
+       * Environment-published state snapshot (e.g. a game board). Emitted by
+       * the harness around the loop, not by the loop itself — environments
+       * push these so UIs can render live state alongside the trace.
+       */
+      type: "env_state";
+      runId: string;
+      state: unknown;
+      at: number;
+    }
+  | {
       type: "run_finished";
       runId: string;
       status: Exclude<RunStatus, "running">;

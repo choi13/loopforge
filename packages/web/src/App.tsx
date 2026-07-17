@@ -8,11 +8,13 @@ import {
 } from "react";
 import { abortRun, createRun, fetchRun, fetchRuns } from "./api";
 import { initialState, reducer } from "./state";
+import { latestSokobanState } from "./sokoban";
 import { useWebSocket } from "./useWebSocket";
-import type { Provider, ServerMessage } from "./types";
+import type { Environment, Provider, ServerMessage } from "./types";
 import { Header } from "./components/Header";
 import { NewRunForm } from "./components/NewRunForm";
 import { RunList } from "./components/RunList";
+import { SokobanBoard } from "./components/SokobanBoard";
 import { Timeline } from "./components/Timeline";
 import { EmptyState } from "./components/EmptyState";
 
@@ -98,19 +100,28 @@ export default function App() {
     prevConnectedRef.current = connected;
   }, [connected, sync]);
 
-  const startRun = useCallback(async (provider: Provider, task: string) => {
-    justStartedRef.current = true;
-    try {
-      const body: { provider: Provider; task?: string } =
-        provider === "mock" ? { provider } : { provider, task };
-      const run = await createRun(body);
-      justStartedRef.current = false;
-      dispatch({ type: "run_created", run, select: true });
-    } catch (err) {
-      justStartedRef.current = false;
-      throw err;
-    }
-  }, []);
+  const startRun = useCallback(
+    async (provider: Provider, environment: Environment, task: string) => {
+      justStartedRef.current = true;
+      try {
+        const body: {
+          provider: Provider;
+          environment: Environment;
+          task?: string;
+        } = { provider, environment };
+        // Mock runs are fully scripted; an empty anthropic+sokoban task lets
+        // the server substitute the standard demo task.
+        if (provider !== "mock" && task.length > 0) body.task = task;
+        const run = await createRun(body);
+        justStartedRef.current = false;
+        dispatch({ type: "run_created", run, select: true });
+      } catch (err) {
+        justStartedRef.current = false;
+        throw err;
+      }
+    },
+    []
+  );
 
   const handleAbort = useCallback(() => {
     const id = selectedIdRef.current;
@@ -140,6 +151,11 @@ export default function App() {
   }, [state.events]);
 
   const selectedRun = state.runs.find((r) => r.id === state.selectedId);
+  const isSokoban = selectedRun?.environment === "sokoban";
+  const boardState = useMemo(
+    () => (isSokoban ? latestSokobanState(state.events) : null),
+    [isSokoban, state.events]
+  );
 
   return (
     <div className="app">
@@ -163,12 +179,28 @@ export default function App() {
           ) : state.runs.length === 0 ? (
             <EmptyState />
           ) : selectedRun ? (
-            <Timeline
-              run={selectedRun}
-              events={state.events}
-              loading={state.historyLoading}
-              error={state.historyError}
-            />
+            isSokoban ? (
+              <div className="arena-layout">
+                <div className="arena-timeline">
+                  <Timeline
+                    run={selectedRun}
+                    events={state.events}
+                    loading={state.historyLoading}
+                    error={state.historyError}
+                  />
+                </div>
+                <aside className="arena-board">
+                  <SokobanBoard state={boardState} />
+                </aside>
+              </div>
+            ) : (
+              <Timeline
+                run={selectedRun}
+                events={state.events}
+                loading={state.historyLoading}
+                error={state.historyError}
+              />
+            )
           ) : (
             <div className="loading">Select a run from the sidebar.</div>
           )}

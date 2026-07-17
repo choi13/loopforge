@@ -21,6 +21,9 @@ export function Timeline({ run, events, loading, error }: Props) {
         <div className="run-head-task">{run.task}</div>
         <div className="run-head-meta">
           <span className="provider-badge">{run.provider}</span>
+          <span className={`env-badge env-${run.environment}`}>
+            {run.environment}
+          </span>
           <span className="mono">{run.model}</span>
           <span className="mono">
             {run.iterations} {run.iterations === 1 ? "iteration" : "iterations"}

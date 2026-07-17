@@ -36,6 +36,9 @@ export function RunList({ runs, selectedId, onSelect }: Props) {
                   <span className="run-task">{truncate(run.task, 60)}</span>
                   <span className="run-meta">
                     <span className="provider-badge">{run.provider}</span>
+                    <span className={`env-badge env-${run.environment}`}>
+                      {run.environment}
+                    </span>
                     <span className="run-time">{fmtWhen(run.createdAt)}</span>
                   </span>
                 </span>

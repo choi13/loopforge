@@ -14,7 +14,8 @@ export function EmptyState() {
         </p>
         <p className="empty-hint">
           Start the <strong>mock demo run</strong> from the sidebar to see it in
-          action. No API key needed.
+          action — or pick the <strong>Sokoban arena</strong> to watch the agent
+          solve a puzzle on a live board. No API key needed.
         </p>
       </div>
     </div>

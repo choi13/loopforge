@@ -42,6 +42,9 @@ export function eventKey(e: TraceEvent): string {
     case "model_request":
     case "model_response":
       return `${e.type}:${e.iteration}`;
+    case "env_state":
+      // Snapshots repeat throughout a run — keyed by emission time.
+      return `${e.type}:${e.at}`;
     default:
       // run_started / run_finished occur once per run
       return e.type;

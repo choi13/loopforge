@@ -974,3 +974,279 @@ button {
   font-size: 12.5px;
   line-height: 1.45;
 }
+
+/* ---------- environment badge ---------- */
+
+.env-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  color: var(--text-dim);
+  background: var(--panel-deep);
+}
+
+.env-badge.env-coding {
+  color: var(--c-running);
+  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.07);
+}
+
+.env-badge.env-sokoban {
+  color: var(--c-warn);
+  border-color: rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.07);
+}
+
+/* ---------- sokoban arena layout ----------
+   Timeline (flexible) + sticky board column; the board stacks on top
+   below 1100px. Coding runs never mount this wrapper. */
+
+.arena-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 24px 24px 0;
+}
+
+.arena-timeline {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.arena-timeline .timeline {
+  max-width: none;
+  margin: 0;
+  padding: 0 0 48px;
+}
+
+.arena-board {
+  flex: 0 0 340px;
+  width: 340px;
+  position: sticky;
+  top: 24px;
+}
+
+@media (max-width: 1100px) {
+  .arena-layout {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    padding-bottom: 48px;
+  }
+
+  .arena-timeline .timeline {
+    padding-bottom: 0;
+  }
+
+  .arena-board {
+    position: static;
+    flex: 0 0 auto;
+    width: 100%;
+  }
+}
+
+/* ---------- sokoban board panel ---------- */
+
+.sk-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.sk-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.sk-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sk-moves {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+@keyframes solved-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(52, 211, 153, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(52, 211, 153, 0.6);
+  }
+}
+
+.sk-solved {
+  padding: 2px 10px;
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--c-completed);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  animation: solved-glow 2s ease-in-out infinite;
+}
+
+.sk-waiting {
+  padding: 48px 12px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+  animation: fade-pulse 1.6s ease-in-out infinite;
+}
+
+/* board grid: static tiles below, translated pieces above */
+
+.sk-scroll {
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.sk-grid {
+  position: relative;
+  display: grid;
+  width: max-content;
+  margin: 0 auto;
+}
+
+.sk-tile {
+  width: 36px;
+  height: 36px;
+}
+
+.sk-floor,
+.sk-goal {
+  border: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.sk-wall {
+  background: var(--border); /* #1f2a44 — raised block */
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 2px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.3);
+}
+
+.sk-goal {
+  display: grid;
+  place-items: center;
+}
+
+.sk-goal::after {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  opacity: 0.75;
+}
+
+.sk-piece {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  transition: transform 0.15s ease;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.sk-box-face {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--c-warn);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -4px 6px rgba(0, 0, 0, 0.3);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sk-box.on-goal .sk-box-face {
+  background: var(--c-completed);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -4px 6px rgba(0, 0, 0, 0.25), 0 0 10px rgba(52, 211, 153, 0.35);
+}
+
+.sk-player {
+  z-index: 1;
+}
+
+.sk-player-face {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.55),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* legend */
+
+.sk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.sk-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sk-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+}
+
+.sk-swatch-goal {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  opacity: 0.75;
+}
+
+.sk-swatch-box {
+  background: var(--c-warn);
+  border-radius: 3px;
+}
+
+.sk-swatch-box-goal {
+  background: var(--c-completed);
+  border-radius: 3px;
+}
+
+.sk-swatch-player {
+  background: var(--accent);
+  border-radius: 50%;
+}

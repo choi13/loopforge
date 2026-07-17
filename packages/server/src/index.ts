@@ -58,6 +58,20 @@ app.post("/api/runs", (req, res) => {
     return;
   }
 
+  const rawEnvironment =
+    typeof body === "object" && body !== null
+      ? (body as { environment?: unknown }).environment
+      : undefined;
+  if (
+    rawEnvironment !== undefined &&
+    rawEnvironment !== "coding" &&
+    rawEnvironment !== "sokoban"
+  ) {
+    res.status(400).json({ error: 'environment must be "coding" or "sokoban"' });
+    return;
+  }
+  const environment = rawEnvironment ?? "coding";
+
   const rawTask =
     typeof body === "object" && body !== null
       ? (body as { task?: unknown }).task
@@ -65,7 +79,8 @@ app.post("/api/runs", (req, res) => {
   const task = typeof rawTask === "string" ? rawTask.trim() : "";
 
   if (provider === "anthropic") {
-    if (!task) {
+    // Sokoban has a built-in default task; coding tasks are free-form and required.
+    if (!task && environment === "coding") {
       res.status(400).json({ error: "A task is required for the anthropic provider" });
       return;
     }
@@ -75,8 +90,8 @@ app.post("/api/runs", (req, res) => {
     }
   }
 
-  // For "mock", RunManager ignores the task and forces the built-in demo task.
-  const run = runManager.createRun(provider, task);
+  // For "mock", RunManager ignores the task and forces the environment's demo task.
+  const run = runManager.createRun(provider, task, environment);
   res.status(201).json({ run });
 });
 

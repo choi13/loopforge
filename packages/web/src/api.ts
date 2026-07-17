@@ -1,4 +1,4 @@
-import type { Provider, RunSummary, TraceEvent } from "./types";
+import type { Environment, Provider, RunSummary, TraceEvent } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -32,6 +32,7 @@ export async function fetchRun(
 
 export async function createRun(body: {
   provider: Provider;
+  environment: Environment;
   task?: string;
 }): Promise<RunSummary> {
   const data = await request<{ run: RunSummary }>("/api/runs", {

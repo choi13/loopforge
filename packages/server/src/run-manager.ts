@@ -1,17 +1,18 @@
 import { randomUUID } from "node:crypto";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   AgentLoop,
   AnthropicProvider,
   MockProvider,
-  createCodingTools,
   type ModelProvider,
   type RunStatus,
   type TokenUsage,
   type TraceEvent,
 } from "@loopforge/core";
-import { DEMO_TASK, buildDemoScript, resetDemoSandbox } from "./demo";
+import {
+  createEnvironment,
+  type EnvironmentName,
+  type RunEnvironment,
+} from "./environments/index";
 
 /** The shape the dashboard renders in the run list. Mirrors the API contract. */
 export interface RunSummary {
@@ -19,6 +20,7 @@ export interface RunSummary {
   task: string;
   provider: string;
   model: string;
+  environment: EnvironmentName;
   status: RunStatus;
   createdAt: number;
   iterations: number;
@@ -35,23 +37,13 @@ interface RunRecord {
   summary: RunSummary;
   events: TraceEvent[];
   controller: AbortController;
+  environment: RunEnvironment;
 }
 
-// src is at packages/server/src — three levels up is the repo root.
-const SANDBOX_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../..",
-  "sandbox",
-  "demo-project",
-);
-
-const SYSTEM_PROMPT =
-  "You are a coding agent working in a small sandboxed JavaScript project. Use the tools to explore the project, run code, and edit files. Always verify your changes by running the tests before declaring success. When the task is complete, reply with a brief summary and stop calling tools.";
-
 /**
- * In-memory registry of runs. Each run owns an AbortController and an event
- * log; every trace event updates the summary and is pushed to the broadcast
- * callback so connected dashboards stay live.
+ * In-memory registry of runs. Each run owns an AbortController, an event log,
+ * and a fresh environment instance; every trace event updates the summary and
+ * is pushed to the broadcast callback so connected dashboards stay live.
  */
 export class RunManager {
   private readonly runs = new Map<string, RunRecord>();
@@ -70,18 +62,32 @@ export class RunManager {
     return { summary: record.summary, events: record.events };
   }
 
-  createRun(provider: "mock" | "anthropic", task: string): RunSummary {
+  createRun(
+    provider: "mock" | "anthropic",
+    task: string,
+    environment: EnvironmentName = "coding",
+  ): RunSummary {
     const runId = randomUUID();
-    const tools = createCodingTools(SANDBOX_DIR);
+
+    // Environments push state snapshots through here; they flow through the
+    // normal event path (appended to the log, broadcast as a trace message).
+    const publishState = (state: unknown): void => {
+      const record = this.runs.get(runId);
+      if (!record) return;
+      this.handleEvent(record, { type: "env_state", runId, state, at: Date.now() });
+    };
+    const env = createEnvironment(environment, publishState);
 
     let modelProvider: ModelProvider;
     let effectiveTask = task;
     if (provider === "mock") {
-      resetDemoSandbox(SANDBOX_DIR);
-      modelProvider = new MockProvider(buildDemoScript());
-      effectiveTask = DEMO_TASK;
+      env.prepare?.();
+      modelProvider = new MockProvider(env.buildDemoScript?.() ?? []);
+      effectiveTask = env.demoTask;
     } else {
       modelProvider = new AnthropicProvider();
+      // Sokoban runs may omit the task; fall back to the environment's demo task.
+      if (!effectiveTask) effectiveTask = env.demoTask;
     }
 
     const controller = new AbortController();
@@ -90,18 +96,19 @@ export class RunManager {
       task: effectiveTask,
       provider: modelProvider.name,
       model: modelProvider.model,
+      environment,
       status: "running",
       createdAt: Date.now(),
       iterations: 0,
       usage: { inputTokens: 0, outputTokens: 0 },
     };
-    const record: RunRecord = { summary, events: [], controller };
+    const record: RunRecord = { summary, events: [], controller, environment: env };
     this.runs.set(runId, record);
 
     const loop = new AgentLoop({
       provider: modelProvider,
-      tools,
-      systemPrompt: SYSTEM_PROMPT,
+      tools: env.tools,
+      systemPrompt: env.systemPrompt,
       maxIterations: 20,
       onEvent: (event) => this.handleEvent(record, event),
     });
@@ -149,6 +156,12 @@ export class RunManager {
     this.broadcast({ type: "trace", runId: summary.id, event });
     if (summaryChanged) {
       this.broadcast({ type: "run_updated", run: summary });
+    }
+
+    // Right after run_started lands, let the environment publish its initial
+    // state (the opening board) so it sits before the first model turn.
+    if (event.type === "run_started") {
+      record.environment.onRunStart?.();
     }
   }
 }
