@@ -23,16 +23,18 @@ export function NewRunForm({ onStart }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const isMock = provider === "mock";
-  // Anthropic + sokoban may omit the task: the server falls back to the
-  // standard Sokoban demo task. Anthropic + coding still requires one.
-  const taskRequired = !isMock && environment === "coding";
+  // Only Anthropic + coding requires a typed task. Ollama falls back to the
+  // demo task server-side (like sokoban), so it can start with an empty task.
+  const taskRequired = provider === "anthropic" && environment === "coding";
   const disabled = busy || (taskRequired && task.trim().length === 0);
 
   const placeholder = isMock
     ? MOCK_PLACEHOLDERS[environment]
     : environment === "sokoban"
       ? "Optional — leave empty for the standard Sokoban task"
-      : "Describe the task for the agent…";
+      : provider === "ollama"
+        ? "Optional — leave empty for the standard bug-fix task"
+        : "Describe the task for the agent…";
 
   const handleEnvironment = (e: ChangeEvent<HTMLSelectElement>) => {
     setEnvironment(e.target.value as Environment);
@@ -85,6 +87,7 @@ export function NewRunForm({ onStart }: Props) {
         onChange={handleProvider}
       >
         <option value="mock">Mock (scripted demo)</option>
+        <option value="ollama">Local (Ollama · llama3)</option>
         <option value="anthropic">Anthropic (live API)</option>
       </select>
 

@@ -15,9 +15,15 @@ export interface ModelRequest {
 }
 
 export interface ModelTurn {
+  /** Concatenated thinking text, for display in the trace only. */
   thinking?: string;
-  /** Opaque signature required to replay thinking blocks to the Claude API. */
-  thinkingSignature?: string;
+  /**
+   * The raw thinking blocks exactly as returned, preserved for faithful replay
+   * to the Claude API. When thinking is enabled and a turn makes tool calls,
+   * these blocks (with their signatures) must be sent back unchanged on the
+   * next request, or the API rejects the continuation.
+   */
+  thinkingBlocks?: { thinking: string; signature: string }[];
   text?: string;
   toolCalls: ToolCallRef[];
   usage: TokenUsage;

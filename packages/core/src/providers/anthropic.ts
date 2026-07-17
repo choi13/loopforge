@@ -36,13 +36,16 @@ export class AnthropicProvider implements ModelProvider {
         outputTokens: response.usage.output_tokens,
       },
     };
+    const thinkingBlocks: { thinking: string; signature: string }[] = [];
 
     for (const block of response.content) {
       if (block.type === "thinking") {
+        // Preserve each block verbatim (text + signature) for replay; also
+        // accumulate the text for the trace display.
+        thinkingBlocks.push({ thinking: block.thinking, signature: block.signature });
         if (block.thinking) {
           turn.thinking = (turn.thinking ?? "") + block.thinking;
         }
-        turn.thinkingSignature = block.signature;
       } else if (block.type === "text") {
         turn.text = (turn.text ?? "") + block.text;
       } else if (block.type === "tool_use") {
@@ -50,9 +53,14 @@ export class AnthropicProvider implements ModelProvider {
       }
     }
 
+    if (thinkingBlocks.length > 0) {
+      turn.thinkingBlocks = thinkingBlocks;
+    }
+
     if (response.stop_reason === "refusal") {
       turn.text = turn.text || "The model declined this request for safety reasons.";
       turn.toolCalls = [];
+      turn.thinkingBlocks = undefined;
     }
 
     return turn;

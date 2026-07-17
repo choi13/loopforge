@@ -9,7 +9,7 @@ import type { TraceEvent, TokenUsage, RunStatus } from "../../core/src/events";
 
 export type { TraceEvent, TokenUsage, RunStatus, ToolCallRef } from "../../core/src/events";
 
-export type Provider = "mock" | "anthropic";
+export type Provider = "mock" | "anthropic" | "ollama";
 
 export type Environment = "coding" | "sokoban";
 

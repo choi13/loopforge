@@ -32,13 +32,15 @@ npm run dev:web
 
 Open http://localhost:5173 and start a **mock** run — no API key needed. The scripted agent finds and fixes a real bug in `sandbox/demo-project` (its tool calls actually execute: it reads files, runs the failing test, patches the code, and re-runs the test green).
 
-To run against the real Claude API:
+### Providers
 
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-```
+LoopForge runs the same agent loop against three interchangeable providers:
 
-then choose the **anthropic** provider in the dashboard and give it any task for the sandbox project.
+- **Mock** — scripted, deterministic; its tool calls execute for real. No setup.
+- **Local (Ollama)** — a real model, no API key, no cost. Install [Ollama](https://ollama.com), `ollama pull llama3`, and pick **Local (Ollama · llama3)** in the dashboard. Because these local models don't support native tool-calling, `OllamaProvider` uses a **ReAct-style JSON adapter** so any completion model can drive the loop.
+- **Anthropic** — the Claude API. Copy `.env.example` to `.env` (gitignored) and set `ANTHROPIC_API_KEY=sk-ant-...`; the server auto-loads it. Then pick the **anthropic** provider (defaults to `claude-opus-4-8`).
+
+Every provider works in both the Runs view and the Eval harness. Running the demo suite under a real local model produces an honest capability profile — e.g. llama3 reliably solves the coding bug-fix but not Sokoban, so the eval lands at 50%.
 
 ## Roadmap
 

@@ -107,11 +107,11 @@ export class AgentLoop {
         });
 
         const assistantContent: ContentBlock[] = [];
-        if (turn.thinking && turn.thinkingSignature) {
+        for (const block of turn.thinkingBlocks ?? []) {
           assistantContent.push({
             type: "thinking",
-            thinking: turn.thinking,
-            signature: turn.thinkingSignature,
+            thinking: block.thinking,
+            signature: block.signature,
           });
         }
         if (turn.text) {

@@ -6,3 +6,4 @@ export * from "./loop";
 export * from "./coding-tools";
 export { MockProvider, type MockStep } from "./providers/mock";
 export { AnthropicProvider } from "./providers/anthropic";
+export { OllamaProvider } from "./providers/ollama";

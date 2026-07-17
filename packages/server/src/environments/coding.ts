@@ -19,7 +19,7 @@ import type { RunEnvironment } from "./index";
  */
 
 const SYSTEM_PROMPT =
-  "You are a coding agent working in a small sandboxed JavaScript project. Use the tools to explore the project, run code, and edit files. Always verify your changes by running the tests before declaring success. When the task is complete, reply with a brief summary and stop calling tools.";
+  "You are a coding agent working in a small sandboxed JavaScript project. Use the tools to explore the project, run code, and edit files. The project is plain Node.js with no build step or package manager — run the tests with the command `node test.js` (do NOT use npm/jest). Always verify your changes by running `node test.js` before declaring success; you are done only once it prints that the tests passed. When the task is complete, reply with a brief summary and stop calling tools.";
 
 export function createCodingEnvironment(runId: string): RunEnvironment {
   const sandboxDir = path.join(os.tmpdir(), `loopforge-run-${runId}`);

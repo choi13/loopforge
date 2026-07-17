@@ -3,11 +3,15 @@ import {
   AgentLoop,
   AnthropicProvider,
   MockProvider,
+  OllamaProvider,
   type ModelProvider,
   type RunStatus,
   type TokenUsage,
   type TraceEvent,
 } from "@loopforge/core";
+
+/** Providers a run can be driven by. */
+export type ProviderName = "mock" | "anthropic" | "ollama";
 import {
   createEnvironment,
   type EnvironmentName,
@@ -92,7 +96,7 @@ export class RunManager {
   }
 
   createRun(
-    provider: "mock" | "anthropic",
+    provider: ProviderName,
     task: string,
     environment: EnvironmentName = "coding",
     options: CreateRunOptions = {},
@@ -120,8 +124,11 @@ export class RunManager {
       modelProvider = new MockProvider(steps);
       effectiveTask = env.demoTask;
     } else {
-      modelProvider = new AnthropicProvider();
-      // Sokoban runs may omit the task; fall back to the environment's demo task.
+      // Real model providers. Ollama runs a local model (no API key / cost);
+      // Anthropic calls the Claude API.
+      modelProvider =
+        provider === "ollama" ? new OllamaProvider() : new AnthropicProvider();
+      // Runs may omit the task (e.g. sokoban); fall back to the demo task.
       if (!effectiveTask) effectiveTask = env.demoTask;
     }
 
