@@ -26,15 +26,21 @@ export interface RunEnvironment {
   prepare?(): void;
   /** Called right after run_started is recorded — publish initial state here. */
   onRunStart?(): void;
+  /**
+   * Best-effort teardown after the run finishes (e.g. remove a per-run temp
+   * sandbox). Must not throw; the caller ignores failures.
+   */
+  cleanup?(): void;
 }
 
 export function createEnvironment(
   name: EnvironmentName,
   publishState: PublishState,
+  runId: string,
 ): RunEnvironment {
   switch (name) {
     case "coding":
-      return createCodingEnvironment();
+      return createCodingEnvironment(runId);
     case "sokoban":
       return createSokobanEnvironment(publishState);
   }

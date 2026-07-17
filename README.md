@@ -45,10 +45,16 @@ then choose the **anthropic** provider in the dashboard and give it any task for
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Core loop engine + live trace dashboard + coding tools + mock mode | ✅ |
-| 2 | Richer coding environment (multi-file tasks, diff view) | ⏳ |
-| 3 | Game arena environment (agent plays 2048/Sokoban with visible reasoning) | ⏳ |
-| 4 | Eval harness (task suites, parallel runs, model/prompt leaderboards) | ⏳ |
-| 5 | Autonomous QA agent environment (Playwright) | ⏳ |
+| 2 | Game-arena environment via pluggable environments (agent solves Sokoban on a live board) | ✅ |
+| 3 | Eval harness (task suites, parallel scored runs, pass-rate aggregation, leaderboard, per-run sandbox isolation) | ✅ |
+| 4 | Autonomous QA agent environment (Playwright) | ⏳ |
+| 5 | Richer coding environment (multi-file tasks, diff view) | ⏳ |
+
+### What each phase demonstrates
+
+- **Phase 1** — the agent loop is a first-class, fully observable object: every model turn, thinking block, tool call, and result streams to the dashboard as it happens.
+- **Phase 2** — the harness is *pluggable*. A whole new domain (a Sokoban game with a live animated board) was added as an environment plugin without touching the core loop — the loop just publishes `env_state` snapshots the UI renders.
+- **Phase 3** — the harness *measures*. It runs a task suite as a batch of scored runs (concurrency-capped, each in an isolated sandbox), and aggregates pass-rate and cost. The demo suite is deliberately **2 pass / 2 fail** so the scorer visibly distinguishes a genuine solution from a lazy or stuck agent. Click any result to drill into that run's full trace.
 
 ## Safety note
 

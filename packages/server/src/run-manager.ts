@@ -13,6 +13,7 @@ import {
   type EnvironmentName,
   type RunEnvironment,
 } from "./environments/index";
+import { buildMockScript, type ScriptKey } from "./mock-scripts";
 
 /** The shape the dashboard renders in the run list. Mirrors the API contract. */
 export interface RunSummary {
@@ -33,11 +34,39 @@ export type ServerMessage =
   | { type: "trace"; runId: string; event: TraceEvent }
   | { type: "run_updated"; run: RunSummary };
 
+/** The terminal event of a run, handed to onFinished callers. */
+type RunFinishedEvent = Extract<TraceEvent, { type: "run_finished" }>;
+
+/** Payload delivered once, when a run reaches a terminal state. */
+export interface RunFinishedNotice {
+  runId: string;
+  summary: RunSummary;
+  events: TraceEvent[];
+  runFinished: RunFinishedEvent;
+}
+
+/**
+ * Options for an eval-driven run. Manual runs pass none of these and behave
+ * exactly as before: a fresh runId, the environment's default demo script (for
+ * mock), and no finish callback.
+ */
+export interface CreateRunOptions {
+  /** Use this exact runId instead of a fresh one (lets the eval pre-assign it). */
+  runId?: string;
+  /** For mock runs: play this specific script instead of the env default. */
+  mockScriptKey?: ScriptKey;
+  /** Invoked once when the run finishes, with its recorded events. */
+  onFinished?: (notice: RunFinishedNotice) => void;
+}
+
 interface RunRecord {
   summary: RunSummary;
   events: TraceEvent[];
   controller: AbortController;
   environment: RunEnvironment;
+  onFinished?: (notice: RunFinishedNotice) => void;
+  /** Guards onFinished so it fires exactly once. */
+  notified: boolean;
 }
 
 /**
@@ -66,8 +95,9 @@ export class RunManager {
     provider: "mock" | "anthropic",
     task: string,
     environment: EnvironmentName = "coding",
+    options: CreateRunOptions = {},
   ): RunSummary {
-    const runId = randomUUID();
+    const runId = options.runId ?? randomUUID();
 
     // Environments push state snapshots through here; they flow through the
     // normal event path (appended to the log, broadcast as a trace message).
@@ -76,13 +106,18 @@ export class RunManager {
       if (!record) return;
       this.handleEvent(record, { type: "env_state", runId, state, at: Date.now() });
     };
-    const env = createEnvironment(environment, publishState);
+    const env = createEnvironment(environment, publishState, runId);
 
     let modelProvider: ModelProvider;
     let effectiveTask = task;
     if (provider === "mock") {
       env.prepare?.();
-      modelProvider = new MockProvider(env.buildDemoScript?.() ?? []);
+      // An eval can pin a specific script (e.g. the lazy coding run that must
+      // FAIL); a manual mock run falls back to the environment's demo script.
+      const steps = options.mockScriptKey
+        ? buildMockScript(options.mockScriptKey)
+        : env.buildDemoScript?.() ?? [];
+      modelProvider = new MockProvider(steps);
       effectiveTask = env.demoTask;
     } else {
       modelProvider = new AnthropicProvider();
@@ -102,7 +137,14 @@ export class RunManager {
       iterations: 0,
       usage: { inputTokens: 0, outputTokens: 0 },
     };
-    const record: RunRecord = { summary, events: [], controller, environment: env };
+    const record: RunRecord = {
+      summary,
+      events: [],
+      controller,
+      environment: env,
+      onFinished: options.onFinished,
+      notified: false,
+    };
     this.runs.set(runId, record);
 
     const loop = new AgentLoop({
@@ -122,6 +164,20 @@ export class RunManager {
       summary.status = "failed";
       this.broadcast({ type: "run_updated", run: summary });
       console.error(`run ${runId} crashed:`, error);
+      // The loop normally emits run_finished (which triggers cleanup); this
+      // path covers a throw outside that flow so the temp sandbox still goes
+      // and any eval waiting on this run is still notified (once).
+      this.cleanup(record);
+      this.notifyFinished(record, {
+        type: "run_finished",
+        runId,
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+        iterations: summary.iterations,
+        totalUsage: summary.usage,
+        durationMs: Date.now() - summary.createdAt,
+        at: Date.now(),
+      });
     });
 
     return summary;
@@ -163,5 +219,38 @@ export class RunManager {
     if (event.type === "run_started") {
       record.environment.onRunStart?.();
     }
+
+    // When the run ends, tear down any per-run resources (e.g. the coding
+    // environment's temp sandbox) and notify any eval waiting on this run.
+    // Best-effort — cleanup must never throw.
+    if (event.type === "run_finished") {
+      this.cleanup(record);
+      this.notifyFinished(record, event);
+    }
+  }
+
+  /** Run an environment's best-effort teardown, swallowing any failure. */
+  private cleanup(record: RunRecord): void {
+    try {
+      record.environment.cleanup?.();
+    } catch (error) {
+      console.error(`cleanup for run ${record.summary.id} failed:`, error);
+    }
+  }
+
+  /**
+   * Deliver the terminal notice to an onFinished caller exactly once, whether
+   * the run ended via run_finished or a throw outside it. No-op for manual runs
+   * (which register no callback).
+   */
+  private notifyFinished(record: RunRecord, runFinished: RunFinishedEvent): void {
+    if (record.notified) return;
+    record.notified = true;
+    record.onFinished?.({
+      runId: record.summary.id,
+      summary: record.summary,
+      events: record.events,
+      runFinished,
+    });
   }
 }

@@ -6,26 +6,54 @@ import {
   useRef,
   useState,
 } from "react";
-import { abortRun, createRun, fetchRun, fetchRuns } from "./api";
+import {
+  abortRun,
+  createEval,
+  createRun,
+  fetchEval,
+  fetchEvals,
+  fetchRun,
+  fetchRuns,
+  fetchSuites,
+} from "./api";
 import { initialState, reducer } from "./state";
 import { latestSokobanState } from "./sokoban";
 import { useWebSocket } from "./useWebSocket";
-import type { Environment, Provider, ServerMessage } from "./types";
+import type {
+  Environment,
+  Provider,
+  ServerMessage,
+  Suite,
+  View,
+} from "./types";
 import { Header } from "./components/Header";
 import { NewRunForm } from "./components/NewRunForm";
 import { RunList } from "./components/RunList";
 import { SokobanBoard } from "./components/SokobanBoard";
 import { Timeline } from "./components/Timeline";
 import { EmptyState } from "./components/EmptyState";
+import { NewEvalForm } from "./components/NewEvalForm";
+import { EvalList } from "./components/EvalList";
+import { EvalView } from "./components/EvalView";
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [evalLoadError, setEvalLoadError] = useState<string | null>(null);
+
+  /** Top-level Runs | Evals view. */
+  const [view, setView] = useState<View>("runs");
+  /** When a run was opened by drilling into an eval result: the eval to return to. */
+  const [fromEvalId, setFromEvalId] = useState<string | null>(null);
+  const [suites, setSuites] = useState<Suite[]>([]);
 
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = state.selectedId;
+  const selectedEvalIdRef = useRef<string | null>(null);
+  selectedEvalIdRef.current = state.selectedEvalId;
   /** True between clicking Start and the run being created — used to auto-select. */
   const justStartedRef = useRef(false);
+  const justStartedEvalRef = useRef(false);
   const prevConnectedRef = useRef(false);
 
   const selectRun = useCallback(async (id: string) => {
@@ -63,9 +91,49 @@ export default function App() {
     }
   }, [selectRun]);
 
+  /** Fetch the eval list. The detailed results load lazily on selection. */
+  const syncEvals = useCallback(async () => {
+    try {
+      const evals = await fetchEvals();
+      dispatch({ type: "evals_loaded", evals });
+      setEvalLoadError(null);
+    } catch (err) {
+      setEvalLoadError(
+        err instanceof Error ? err.message : "Failed to load evals"
+      );
+    }
+  }, []);
+
+  const selectEval = useCallback(async (id: string) => {
+    dispatch({ type: "select_eval", id });
+    try {
+      // The list form may omit results; pull the full detail for the table.
+      const summary = await fetchEval(id);
+      dispatch({ type: "eval_upsert", eval: summary });
+    } catch {
+      // Keep whatever list-form summary we have; WS pushes will fill it in.
+    }
+  }, []);
+
   useEffect(() => {
     void sync();
-  }, [sync]);
+    void syncEvals();
+  }, [sync, syncEvals]);
+
+  // Suites rarely change; fetch once. Failure just leaves the demo fallback.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSuites()
+      .then((s) => {
+        if (!cancelled) setSuites(s);
+      })
+      .catch(() => {
+        /* form falls back to the demo suite */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleMessage = useCallback((msg: ServerMessage) => {
     switch (msg.type) {
@@ -80,6 +148,15 @@ export default function App() {
         break;
       case "run_updated":
         dispatch({ type: "run_updated", run: msg.run });
+        break;
+      case "eval_created": {
+        const select = justStartedEvalRef.current;
+        if (select) justStartedEvalRef.current = false;
+        dispatch({ type: "eval_upsert", eval: msg.eval, select });
+        break;
+      }
+      case "eval_updated":
+        dispatch({ type: "eval_upsert", eval: msg.eval });
         break;
     }
   }, []);
@@ -96,9 +173,12 @@ export default function App() {
 
   // Re-sync after a reconnect: WS pushes may have been missed while offline.
   useEffect(() => {
-    if (connected && !prevConnectedRef.current) void sync();
+    if (connected && !prevConnectedRef.current) {
+      void sync();
+      void syncEvals();
+    }
     prevConnectedRef.current = connected;
-  }, [connected, sync]);
+  }, [connected, sync, syncEvals]);
 
   const startRun = useCallback(
     async (provider: Provider, environment: Environment, task: string) => {
@@ -123,12 +203,48 @@ export default function App() {
     []
   );
 
+  const startEval = useCallback(
+    async (body: { suiteId: string; provider: Provider; repeats: number }) => {
+      justStartedEvalRef.current = true;
+      try {
+        const summary = await createEval(body);
+        justStartedEvalRef.current = false;
+        dispatch({ type: "eval_upsert", eval: summary, select: true });
+      } catch (err) {
+        justStartedEvalRef.current = false;
+        throw err;
+      }
+    },
+    []
+  );
+
   const handleAbort = useCallback(() => {
     const id = selectedIdRef.current;
     if (!id) return;
     void abortRun(id).catch(() => {
       // The run may have finished in the meantime; run_updated will settle it.
     });
+  }, []);
+
+  const changeView = useCallback((v: View) => {
+    setView(v);
+    // Leaving the drill-down clears the "back to eval" affordance.
+    if (v === "evals") setFromEvalId(null);
+  }, []);
+
+  /** Drill from an eval result into the underlying run's full trace/board. */
+  const openRunFromEval = useCallback(
+    (runId: string) => {
+      setFromEvalId(selectedEvalIdRef.current);
+      setView("runs");
+      void selectRun(runId);
+    },
+    [selectRun]
+  );
+
+  const backToEval = useCallback(() => {
+    setFromEvalId(null);
+    setView("evals");
   }, []);
 
   // Auto-scroll the timeline while the user is pinned to the bottom.
@@ -147,8 +263,8 @@ export default function App() {
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
-  }, [state.events]);
+    if (el && stickRef.current && view === "runs") el.scrollTop = el.scrollHeight;
+  }, [state.events, view]);
 
   const selectedRun = state.runs.find((r) => r.id === state.selectedId);
   const isSokoban = selectedRun?.environment === "sokoban";
@@ -157,53 +273,141 @@ export default function App() {
     [isSokoban, state.events]
   );
 
-  return (
-    <div className="app">
-      <Header run={selectedRun} connected={connected} onAbort={handleAbort} />
-      <div className="app-body">
-        <aside className="sidebar">
-          <NewRunForm onStart={startRun} />
-          <RunList
-            runs={state.runs}
-            selectedId={state.selectedId}
-            onSelect={(id) => void selectRun(id)}
-          />
-        </aside>
-        <main className="main" ref={scrollRef} onScroll={handleScroll}>
-          {loadError && !state.runsLoaded ? (
-            <div className="center-note">
-              <div className="inline-error">{loadError}</div>
-            </div>
-          ) : !state.runsLoaded ? (
-            <div className="loading">Loading runs…</div>
-          ) : state.runs.length === 0 ? (
-            <EmptyState />
-          ) : selectedRun ? (
-            isSokoban ? (
-              <div className="arena-layout">
-                <div className="arena-timeline">
-                  <Timeline
-                    run={selectedRun}
-                    events={state.events}
-                    loading={state.historyLoading}
-                    error={state.historyError}
-                  />
-                </div>
-                <aside className="arena-board">
-                  <SokobanBoard state={boardState} />
-                </aside>
-              </div>
-            ) : (
+  const sortedEvals = useMemo(
+    () => Object.values(state.evals).sort((a, b) => b.createdAt - a.createdAt),
+    [state.evals]
+  );
+  const selectedEval = state.selectedEvalId
+    ? state.evals[state.selectedEvalId]
+    : undefined;
+
+  const runsBody = (
+    <>
+      {fromEvalId && (
+        <div className="back-bar">
+          <button type="button" className="back-btn" onClick={backToEval}>
+            <span className="back-arrow" aria-hidden="true">
+              ‹
+            </span>
+            Back to eval
+          </button>
+          <span className="back-bar-label">
+            Viewing a single run from an eval batch
+          </span>
+        </div>
+      )}
+      {loadError && !state.runsLoaded ? (
+        <div className="center-note">
+          <div className="inline-error">{loadError}</div>
+        </div>
+      ) : !state.runsLoaded ? (
+        <div className="loading">Loading runs…</div>
+      ) : state.runs.length === 0 ? (
+        <EmptyState />
+      ) : selectedRun ? (
+        isSokoban ? (
+          <div className="arena-layout">
+            <div className="arena-timeline">
               <Timeline
                 run={selectedRun}
                 events={state.events}
                 loading={state.historyLoading}
                 error={state.historyError}
               />
-            )
+            </div>
+            <aside className="arena-board">
+              <SokobanBoard state={boardState} />
+            </aside>
+          </div>
+        ) : (
+          <Timeline
+            run={selectedRun}
+            events={state.events}
+            loading={state.historyLoading}
+            error={state.historyError}
+          />
+        )
+      ) : (
+        <div className="loading">Select a run from the sidebar.</div>
+      )}
+    </>
+  );
+
+  const evalsBody =
+    evalLoadError && !state.evalsLoaded ? (
+      <div className="center-note">
+        <div className="inline-error">{evalLoadError}</div>
+      </div>
+    ) : !state.evalsLoaded ? (
+      <div className="loading">Loading evals…</div>
+    ) : sortedEvals.length === 0 ? (
+      <div className="empty-wrap">
+        <div className="empty-card">
+          <h1>No evals yet</h1>
+          <p>
+            Run the mixed demo suite to see the harness score a batch{" "}
+            <strong>(2 pass / 2 fail)</strong> — no API key needed.
+          </p>
+          <p className="empty-hint">
+            Start it from the <strong>New eval</strong> form in the sidebar.
+          </p>
+        </div>
+      </div>
+    ) : selectedEval ? (
+      <EvalView
+        evalSummary={selectedEval}
+        allEvals={sortedEvals}
+        onOpenRun={openRunFromEval}
+      />
+    ) : (
+      <div className="empty-wrap">
+        <div className="empty-card">
+          <h1>Select an eval</h1>
+          <p>
+            Pick a batch from the sidebar to see its progress, results, and
+            aggregate stats.
+          </p>
+          <p className="empty-hint">
+            Or start the <strong>mixed demo suite</strong> to watch the harness
+            score a fresh batch live.
+          </p>
+        </div>
+      </div>
+    );
+
+  return (
+    <div className="app">
+      <Header
+        view={view}
+        onViewChange={changeView}
+        run={selectedRun}
+        connected={connected}
+        onAbort={handleAbort}
+      />
+      <div className="app-body">
+        <aside className="sidebar">
+          {view === "runs" ? (
+            <>
+              <NewRunForm onStart={startRun} />
+              <RunList
+                runs={state.runs}
+                selectedId={state.selectedId}
+                onSelect={(id) => void selectRun(id)}
+              />
+            </>
           ) : (
-            <div className="loading">Select a run from the sidebar.</div>
+            <>
+              <NewEvalForm suites={suites} onCreate={startEval} />
+              <EvalList
+                evals={sortedEvals}
+                selectedId={state.selectedEvalId}
+                onSelect={(id) => void selectEval(id)}
+              />
+            </>
           )}
+        </aside>
+        <main className="main" ref={scrollRef} onScroll={handleScroll}>
+          {view === "runs" ? runsBody : evalsBody}
         </main>
       </div>
     </div>

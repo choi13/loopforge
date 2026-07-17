@@ -1,4 +1,4 @@
-import type { RunSummary, TraceEvent } from "./types";
+import type { EvalSummary, RunSummary, TraceEvent } from "./types";
 
 export interface State {
   runs: RunSummary[];
@@ -10,6 +10,10 @@ export interface State {
   eventKeys: ReadonlySet<string>;
   historyLoading: boolean;
   historyError: string | null;
+  /** Evals keyed by id; upserted from list/detail fetches and WS pushes. */
+  evals: Record<string, EvalSummary>;
+  evalsLoaded: boolean;
+  selectedEvalId: string | null;
 }
 
 export const initialState: State = {
@@ -20,6 +24,9 @@ export const initialState: State = {
   eventKeys: new Set<string>(),
   historyLoading: false,
   historyError: null,
+  evals: {},
+  evalsLoaded: false,
+  selectedEvalId: null,
 };
 
 export type Action =
@@ -30,7 +37,27 @@ export type Action =
   | { type: "history_failed"; id: string; error: string }
   | { type: "run_created"; run: RunSummary; select: boolean }
   | { type: "trace"; runId: string; event: TraceEvent }
-  | { type: "run_updated"; run: RunSummary };
+  | { type: "run_updated"; run: RunSummary }
+  | { type: "evals_loaded"; evals: EvalSummary[] }
+  | { type: "eval_upsert"; eval: EvalSummary; select?: boolean }
+  | { type: "select_eval"; id: string };
+
+/**
+ * Merge an incoming eval over what we already have. The list endpoint may send
+ * a light form with no `results`; never let it clobber the detailed results a
+ * prior detail fetch or WS push gave us. Counts/aggregate always take the
+ * freshest (incoming) values.
+ */
+function mergeEval(
+  existing: EvalSummary | undefined,
+  incoming: EvalSummary
+): EvalSummary {
+  if (incoming.results.length > 0) return incoming;
+  if (existing && existing.results.length > 0) {
+    return { ...incoming, results: existing.results };
+  }
+  return incoming;
+}
 
 /** Stable identity for a trace event within a single run. */
 export function eventKey(e: TraceEvent): string {
@@ -146,5 +173,24 @@ export function reducer(state: State, action: Action): State {
 
     case "run_updated":
       return { ...state, runs: upsertRun(state.runs, action.run) };
+
+    case "evals_loaded": {
+      const evals: Record<string, EvalSummary> = {};
+      for (const e of action.evals) evals[e.id] = mergeEval(state.evals[e.id], e);
+      return { ...state, evals, evalsLoaded: true };
+    }
+
+    case "eval_upsert": {
+      const merged = mergeEval(state.evals[action.eval.id], action.eval);
+      const evals = { ...state.evals, [action.eval.id]: merged };
+      return {
+        ...state,
+        evals,
+        selectedEvalId: action.select ? action.eval.id : state.selectedEvalId,
+      };
+    }
+
+    case "select_eval":
+      return { ...state, selectedEvalId: action.id };
   }
 }

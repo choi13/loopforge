@@ -3,6 +3,8 @@ import cors from "cors";
 import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { RunManager, type ServerMessage } from "./run-manager";
+import { EvalManager, type EvalMessage } from "./eval-manager";
+import { getSuite, listSuites, toPublicTask } from "./eval/suites";
 
 const PORT = 8787;
 
@@ -19,7 +21,7 @@ wss.on("connection", (socket) => {
   socket.on("close", () => sockets.delete(socket));
 });
 
-function broadcast(message: ServerMessage): void {
+function broadcast(message: ServerMessage | EvalMessage): void {
   const payload = JSON.stringify(message);
   for (const socket of sockets) {
     if (socket.readyState === WebSocket.OPEN) {
@@ -29,6 +31,7 @@ function broadcast(message: ServerMessage): void {
 }
 
 const runManager = new RunManager(broadcast);
+const evalManager = new EvalManager(runManager, broadcast);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
@@ -101,6 +104,76 @@ app.post("/api/runs/:id/abort", (req, res) => {
     return;
   }
   res.json({ ok: true });
+});
+
+app.get("/api/suites", (_req, res) => {
+  const suites = listSuites().map((suite) => ({
+    id: suite.id,
+    name: suite.name,
+    tasks: suite.tasks.map(toPublicTask),
+  }));
+  res.json({ suites });
+});
+
+app.post("/api/evals", (req, res) => {
+  const body: unknown = req.body;
+  const get = (key: string): unknown =>
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)[key]
+      : undefined;
+
+  const provider = get("provider");
+  if (provider !== "mock" && provider !== "anthropic") {
+    res.status(400).json({ error: 'provider must be "mock" or "anthropic"' });
+    return;
+  }
+
+  const rawSuiteId = get("suiteId");
+  if (rawSuiteId !== undefined && typeof rawSuiteId !== "string") {
+    res.status(400).json({ error: "suiteId must be a string" });
+    return;
+  }
+  const suiteId = rawSuiteId ?? "demo";
+  if (!getSuite(suiteId)) {
+    res.status(400).json({ error: `Unknown suite: ${suiteId}` });
+    return;
+  }
+
+  const rawRepeats = get("repeats");
+  let repeats = 1;
+  if (rawRepeats !== undefined) {
+    if (
+      typeof rawRepeats !== "number" ||
+      !Number.isInteger(rawRepeats) ||
+      rawRepeats < 1 ||
+      rawRepeats > 5
+    ) {
+      res.status(400).json({ error: "repeats must be an integer between 1 and 5" });
+      return;
+    }
+    repeats = rawRepeats;
+  }
+
+  if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
+    res.status(400).json({ error: "ANTHROPIC_API_KEY is not set on the server" });
+    return;
+  }
+
+  const summary = evalManager.create({ suiteId, provider, repeats });
+  res.status(201).json({ eval: summary });
+});
+
+app.get("/api/evals", (_req, res) => {
+  res.json({ evals: evalManager.list() });
+});
+
+app.get("/api/evals/:id", (req, res) => {
+  const summary = evalManager.get(req.params.id);
+  if (!summary) {
+    res.status(404).json({ error: `No eval with id ${req.params.id}` });
+    return;
+  }
+  res.json({ eval: summary });
 });
 
 server.listen(PORT, () => {

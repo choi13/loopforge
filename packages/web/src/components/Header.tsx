@@ -1,14 +1,17 @@
-import type { RunSummary } from "../types";
+import type { RunSummary, View } from "../types";
 import { fmtTokens, statusLabel } from "../format";
 import { LogoMark } from "./LogoMark";
 
 interface Props {
+  view: View;
+  onViewChange: (view: View) => void;
   run?: RunSummary;
   connected: boolean;
   onAbort: () => void;
 }
 
-export function Header({ run, connected, onAbort }: Props) {
+export function Header({ view, onViewChange, run, connected, onAbort }: Props) {
+  const showRun = view === "runs" && run;
   return (
     <header className="header">
       <div className="wordmark">
@@ -18,8 +21,23 @@ export function Header({ run, connected, onAbort }: Props) {
         </span>
       </div>
 
+      <div className="view-switch" role="tablist" aria-label="Dashboard view">
+        {(["runs", "evals"] as View[]).map((v) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            className={"seg" + (view === v ? " active" : "")}
+            onClick={() => onViewChange(v)}
+          >
+            {v === "runs" ? "Runs" : "Evals"}
+          </button>
+        ))}
+      </div>
+
       <div className="header-right">
-        {run && (
+        {showRun && (
           <>
             <span className={`status-pill status-${run.status}`}>
               <span className="dot" />

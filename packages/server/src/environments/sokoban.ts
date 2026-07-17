@@ -237,6 +237,34 @@ export function buildSokobanDemoScript(): MockStep[] {
   ];
 }
 
+/**
+ * A scripted run that flails and gives up: it looks, makes four legal moves
+ * (right, left, up, down) that never place both boxes on goals, then declares
+ * defeat. Every move is legal (ok === true) against the real SokobanGame, but
+ * the board is never solved, so no env_state with solved:true is ever
+ * published and the sokoban scorer must mark this run a FAIL. The move list is
+ * verified legal-but-unsolved by a throwaway script during development. Used
+ * by the eval suite as the negative case.
+ */
+export function buildStuckSokobanScript(): MockStep[] {
+  return [
+    {
+      thinking: "Let me look at the board before I move.",
+      toolCalls: [{ name: "look", input: {} }],
+      delayMs: 500,
+    },
+    {
+      thinking: "Let me shuffle around and see if a path opens up.",
+      toolCalls: [mv("right"), mv("left"), mv("up"), mv("down")],
+      delayMs: 650,
+    },
+    {
+      text: "I cannot find the solution from here.",
+      delayMs: 500,
+    },
+  ];
+}
+
 export function createSokobanEnvironment(publishState: PublishState): RunEnvironment {
   const game = new SokobanGame(SOKOBAN_LEVEL);
 

@@ -1,4 +1,11 @@
-import type { Environment, Provider, RunSummary, TraceEvent } from "./types";
+import type {
+  Environment,
+  EvalSummary,
+  Provider,
+  RunSummary,
+  Suite,
+  TraceEvent,
+} from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -47,4 +54,45 @@ export async function abortRun(id: string): Promise<void> {
   await request<{ ok: boolean }>(`/api/runs/${encodeURIComponent(id)}/abort`, {
     method: "POST",
   });
+}
+
+/* ---------- evals ---------- */
+
+/**
+ * The list endpoint may omit `results` to stay light; the detail endpoint and
+ * WS pushes always include it. Normalize so the client can treat `results` as a
+ * present array everywhere.
+ */
+function normalizeEval(e: EvalSummary): EvalSummary {
+  return { ...e, results: e.results ?? [] };
+}
+
+export async function fetchSuites(): Promise<Suite[]> {
+  const data = await request<{ suites: Suite[] }>("/api/suites");
+  return data.suites;
+}
+
+export async function fetchEvals(): Promise<EvalSummary[]> {
+  const data = await request<{ evals: EvalSummary[] }>("/api/evals");
+  return data.evals.map(normalizeEval);
+}
+
+export async function fetchEval(id: string): Promise<EvalSummary> {
+  const data = await request<{ eval: EvalSummary }>(
+    `/api/evals/${encodeURIComponent(id)}`
+  );
+  return normalizeEval(data.eval);
+}
+
+export async function createEval(body: {
+  suiteId: string;
+  provider: Provider;
+  repeats: number;
+}): Promise<EvalSummary> {
+  const data = await request<{ eval: EvalSummary }>("/api/evals", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return normalizeEval(data.eval);
 }
