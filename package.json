@@ -1,0 +1,13 @@
+{
+  "name": "loopforge",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w @loopforge/server",
+    "dev:web": "npm run dev -w @loopforge/web",
+    "typecheck": "npm run typecheck --workspaces"
+  }
+}
