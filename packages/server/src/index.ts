@@ -6,8 +6,10 @@ import { WebSocket, WebSocketServer } from "ws";
 import { RunManager, type ServerMessage } from "./run-manager";
 import { EvalManager, type EvalMessage } from "./eval-manager";
 import { getSuite, listSuites, toPublicTask } from "./eval/suites";
+import { startTargetSite } from "./target-site";
 
 const PORT = 8787;
+const TARGET_SITE_PORT = 8788;
 
 const app = express();
 app.use(cors());
@@ -98,9 +100,12 @@ app.post("/api/runs", (req, res) => {
   if (
     rawEnvironment !== undefined &&
     rawEnvironment !== "coding" &&
-    rawEnvironment !== "sokoban"
+    rawEnvironment !== "sokoban" &&
+    rawEnvironment !== "browser"
   ) {
-    res.status(400).json({ error: 'environment must be "coding" or "sokoban"' });
+    res
+      .status(400)
+      .json({ error: 'environment must be "coding", "sokoban", or "browser"' });
     return;
   }
   const environment = rawEnvironment ?? "coding";
@@ -122,7 +127,8 @@ app.post("/api/runs", (req, res) => {
   }
 
   if (provider === "anthropic") {
-    // Sokoban has a built-in default task; coding tasks are free-form and required.
+    // Sokoban and browser have built-in default tasks; coding tasks are
+    // free-form and required.
     if (!task && environment === "coding") {
       res.status(400).json({ error: "A task is required for the anthropic provider" });
       return;
@@ -246,4 +252,11 @@ app.use(jsonErrorHandler);
 
 server.listen(PORT, () => {
   console.log(`LoopForge server listening on http://localhost:${PORT}`);
+});
+
+// The seeded QA target the browser environment tests against.
+startTargetSite(TARGET_SITE_PORT).once("listening", () => {
+  console.log(
+    `LoopMart demo shop (QA target) listening on http://localhost:${TARGET_SITE_PORT}`,
+  );
 });

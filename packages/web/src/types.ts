@@ -11,7 +11,7 @@ export type { TraceEvent, TokenUsage, RunStatus, ToolCallRef } from "../../core/
 
 export type Provider = "mock" | "anthropic" | "ollama" | "claude-cli";
 
-export type Environment = "coding" | "sokoban";
+export type Environment = "coding" | "sokoban" | "browser";
 
 /** Top-level dashboard view. */
 export type View = "runs" | "evals";
@@ -58,6 +58,19 @@ export interface SokobanState {
   player: [number, number];
   moveCount: number;
   solved: boolean;
+}
+
+/**
+ * Payload of `env_state` events for browser (web-QA) runs: the page the
+ * headless browser is currently on, published after every successful
+ * goto/click. `screenshot` is a jpeg data URL of the 800x600 viewport.
+ */
+export interface BrowserState {
+  kind: "browser";
+  url: string;
+  title: string;
+  steps: number;
+  screenshot: string;
 }
 
 /* ---------- evals (Phase 3) ----------

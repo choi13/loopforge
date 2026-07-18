@@ -19,6 +19,7 @@ import {
 import { initialState, reducer } from "./state";
 import { latestSokobanState } from "./sokoban";
 import { latestCodingFilesState } from "./codingFiles";
+import { latestBrowserState } from "./browserState";
 import { useWebSocket } from "./useWebSocket";
 import type {
   Environment,
@@ -32,6 +33,7 @@ import { NewRunForm } from "./components/NewRunForm";
 import { RunList } from "./components/RunList";
 import { SokobanBoard } from "./components/SokobanBoard";
 import { FileChangesPanel } from "./components/FileChangesPanel";
+import { BrowserPanel } from "./components/BrowserPanel";
 import { Timeline } from "./components/Timeline";
 import { EmptyState } from "./components/EmptyState";
 import { NewEvalForm } from "./components/NewEvalForm";
@@ -209,7 +211,7 @@ export default function App() {
           task?: string;
           model?: string;
         } = { provider, environment };
-        // Mock runs are fully scripted; an empty anthropic+sokoban task lets
+        // Mock runs are fully scripted; an empty sokoban/browser task lets
         // the server substitute the standard demo task.
         if (provider !== "mock" && task.length > 0) body.task = task;
         // "model" travels only when a non-empty override was typed; empty
@@ -305,12 +307,20 @@ export default function App() {
     () => (isCoding ? latestCodingFilesState(state.events) : null),
     [isCoding, state.events]
   );
+  const isBrowser = selectedRun?.environment === "browser";
+  const browserPanelState = useMemo(
+    () => (isBrowser ? latestBrowserState(state.events) : null),
+    [isBrowser, state.events]
+  );
 
-  // What occupies the sticky side column: sokoban always shows its board
-  // (with a "waiting" placeholder); coding runs show the file-changes panel
-  // only once the first coding_files snapshot has arrived.
+  // What occupies the sticky side column: sokoban always shows its board and
+  // browser runs their live page view (each with a "waiting" placeholder);
+  // coding runs show the file-changes panel only once the first coding_files
+  // snapshot has arrived.
   const sidePanel = isSokoban ? (
     <SokobanBoard state={boardState} />
+  ) : isBrowser ? (
+    <BrowserPanel state={browserPanelState} events={state.events} />
   ) : filesState ? (
     <FileChangesPanel state={filesState} />
   ) : null;
@@ -358,7 +368,10 @@ export default function App() {
               />
             </div>
             <aside
-              className={"arena-board" + (isSokoban ? "" : " arena-files")}
+              className={
+                "arena-board" +
+                (isSokoban ? "" : isBrowser ? " arena-browser" : " arena-files")
+              }
             >
               {sidePanel}
             </aside>

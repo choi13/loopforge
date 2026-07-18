@@ -28,6 +28,8 @@ export type RunFinishedEvent = Extract<TraceEvent, { type: "run_finished" }>;
  *   source, so a `cat test.js` (whose output includes the console.log line and
  *   an exit code 0) must not masquerade as a passing test run.
  * - sokoban: PASS iff some published env_state reports solved === true.
+ * - browser: PASS iff some successful click observed the planted 500 — the
+ *   agent must actually exercise the broken order flow, not just browse.
  */
 export function scoreRun(
   environment: EnvironmentName,
@@ -40,6 +42,9 @@ export function scoreRun(
 
   if (environment === "coding") {
     return scoreCoding(events);
+  }
+  if (environment === "browser") {
+    return scoreBrowser(events);
   }
   return scoreSokoban(events);
 }
@@ -79,6 +84,26 @@ function scoreCoding(events: TraceEvent[]): RunScore {
     }
   }
   return { passed: false, reason: "tests never passed" };
+}
+
+/**
+ * PASS iff a SUCCESSFUL click's output contains the planted checkout error —
+ * i.e. the agent clicked through to the broken order submission and saw the
+ * 500 page. Reading about the error elsewhere (or an errored click) does not
+ * count: the bug must surface through the real flow.
+ */
+function scoreBrowser(events: TraceEvent[]): RunScore {
+  for (const event of events) {
+    if (
+      event.type === "tool_finished" &&
+      event.name === "click" &&
+      !event.isError &&
+      event.output.includes("Internal Server Error (500)")
+    ) {
+      return { passed: true, reason: "found the checkout bug" };
+    }
+  }
+  return { passed: false, reason: "checkout bug never surfaced" };
 }
 
 function scoreSokoban(events: TraceEvent[]): RunScore {

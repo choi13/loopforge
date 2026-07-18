@@ -89,3 +89,48 @@ test("sokoban: FAIL when never solved", () => {
   const events: TraceEvent[] = [envState({ solved: false, moveCount: 3 }, 0)];
   assert.equal(scoreRun("sokoban", events, finished("completed")).passed, false);
 });
+
+const ERROR_PAGE_SUMMARY =
+  "URL: http://localhost:8788/order\nTitle: LoopMart — Error\nHeadings: Internal Server Error (500)\nPage text:\nOrder processing failed: ERR_ORDER_FAILED";
+
+test("browser: PASS when a successful click output contains the planted 500", () => {
+  const events: TraceEvent[] = [
+    toolFinished("b1", "click", ERROR_PAGE_SUMMARY),
+  ];
+  const score = scoreRun("browser", events, finished("completed"));
+  assert.equal(score.passed, true);
+  assert.equal(score.reason, "found the checkout bug");
+});
+
+test("browser: FAIL when no click ever surfaces the 500", () => {
+  const events: TraceEvent[] = [
+    toolFinished("b1", "goto", "URL: http://localhost:8788/\nTitle: LoopMart"),
+    toolFinished("b2", "click", "URL: http://localhost:8788/products\nTitle: LoopMart — Products"),
+    toolFinished("b3", "read_page", "URL: http://localhost:8788/products"),
+  ];
+  const score = scoreRun("browser", events, finished("completed"));
+  assert.equal(score.passed, false);
+  assert.equal(score.reason, "checkout bug never surfaced");
+});
+
+test("browser: an errored click showing the 500 text does NOT pass", () => {
+  const events: TraceEvent[] = [
+    toolFinished("b1", "click", ERROR_PAGE_SUMMARY, true),
+  ];
+  assert.equal(scoreRun("browser", events, finished("completed")).passed, false);
+});
+
+test("browser: a non-click tool showing the 500 text does NOT pass", () => {
+  // Only clicking through the broken order flow counts, not reading about it.
+  const events: TraceEvent[] = [
+    toolFinished("b1", "read_page", ERROR_PAGE_SUMMARY),
+  ];
+  assert.equal(scoreRun("browser", events, finished("completed")).passed, false);
+});
+
+test("browser: a failed run is always a fail", () => {
+  const events: TraceEvent[] = [
+    toolFinished("b1", "click", ERROR_PAGE_SUMMARY),
+  ];
+  assert.equal(scoreRun("browser", events, finished("failed")).passed, false);
+});

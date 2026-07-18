@@ -14,6 +14,8 @@ interface Props {
 const MOCK_PLACEHOLDERS: Record<Environment, string> = {
   coding: "Demo: find and fix the failing test (scripted, no API key needed)",
   sokoban: "Demo: agent solves a Sokoban level (scripted, no API key needed)",
+  browser:
+    "Demo: QA agent finds a planted checkout bug (scripted, no API key needed)",
 };
 
 /** Placeholder = each provider's default model (used when the field is empty). */
@@ -41,9 +43,11 @@ export function NewRunForm({ onStart }: Props) {
     ? MOCK_PLACEHOLDERS[environment]
     : environment === "sokoban"
       ? "Optional — leave empty for the standard Sokoban task"
-      : provider === "ollama" || provider === "claude-cli"
-        ? "Optional — leave empty for the standard bug-fix task"
-        : "Describe the task for the agent…";
+      : environment === "browser"
+        ? "Optional — leave empty for the standard checkout QA task"
+        : provider === "ollama" || provider === "claude-cli"
+          ? "Optional — leave empty for the standard bug-fix task"
+          : "Describe the task for the agent…";
 
   const handleEnvironment = (e: ChangeEvent<HTMLSelectElement>) => {
     setEnvironment(e.target.value as Environment);
@@ -87,6 +91,7 @@ export function NewRunForm({ onStart }: Props) {
       >
         <option value="coding">Coding sandbox</option>
         <option value="sokoban">Sokoban arena</option>
+        <option value="browser">Web QA (browser)</option>
       </select>
 
       <label className="field-label" htmlFor="new-run-provider">

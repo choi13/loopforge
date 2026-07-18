@@ -1,4 +1,5 @@
 import type { MockStep, Tool } from "@loopforge/core";
+import { createBrowserEnvironment } from "./browser";
 import { createCodingEnvironment } from "./coding";
 import { createSokobanEnvironment } from "./sokoban";
 
@@ -10,7 +11,7 @@ import { createSokobanEnvironment } from "./sokoban";
  * never leak between runs.
  */
 
-export type EnvironmentName = "coding" | "sokoban";
+export type EnvironmentName = "coding" | "sokoban" | "browser";
 
 /** Callback the server wires to append + broadcast an env_state trace event. */
 export type PublishState = (state: unknown) => void;
@@ -43,5 +44,7 @@ export function createEnvironment(
       return createCodingEnvironment(runId, publishState);
     case "sokoban":
       return createSokobanEnvironment(publishState);
+    case "browser":
+      return createBrowserEnvironment(publishState);
   }
 }

@@ -1,4 +1,5 @@
 import { DEMO_TASK } from "../demo";
+import { BROWSER_DEMO_TASK } from "../environments/browser";
 import type { EnvironmentName } from "../environments/index";
 import { SOKOBAN_DEMO_TASK } from "../environments/sokoban";
 import type { ScriptKey } from "../mock-scripts";
@@ -54,7 +55,36 @@ const DEMO_SUITE: Suite = {
   ],
 };
 
-const SUITES: Suite[] = [DEMO_SUITE];
+/**
+ * The "web-qa" suite: two browser tasks over the LoopMart demo shop. Under the
+ * mock provider this yields exactly 1 pass and 1 fail, proving the browser
+ * scorer distinguishes a QA run that exercises the broken order flow from one
+ * that merely browses.
+ */
+const WEB_QA_SUITE: Suite = {
+  id: "web-qa",
+  name: "Web QA suite",
+  tasks: [
+    // q1 browser-pass: the mock walks the full checkout flow, clicks Place
+    // order, observes the planted 500, and reports the bug -> PASS.
+    {
+      id: "q1",
+      environment: "browser",
+      task: BROWSER_DEMO_TASK,
+      mockScriptKey: "browser-find-bug",
+    },
+    // q2 browser-fail: the mock browses home and products but never submits
+    // an order, so the 500 never surfaces -> FAIL.
+    {
+      id: "q2",
+      environment: "browser",
+      task: BROWSER_DEMO_TASK,
+      mockScriptKey: "browser-miss-bug",
+    },
+  ],
+};
+
+const SUITES: Suite[] = [DEMO_SUITE, WEB_QA_SUITE];
 
 export function listSuites(): Suite[] {
   return SUITES;
