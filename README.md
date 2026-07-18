@@ -1,8 +1,33 @@
 # LoopForge
 
+[![CI](https://github.com/choi13/loopforge/actions/workflows/ci.yml/badge.svg)](https://github.com/choi13/loopforge/actions/workflows/ci.yml)
+
 **An agent-loop engineering, observability, and evaluation platform.** LoopForge takes the loop at the heart of every modern AI agent — *observe → reason → act → verify* — and makes it a first-class, observable object instead of a black box: every model turn, thinking block, tool call, and result streams live to a trace dashboard as a structured event. The same loop runs interchangeably against four model providers (a scripted mock, a local Ollama model, the logged-in Claude Code CLI, or the Claude API) and three pluggable environments (a sandboxed coding project, a Sokoban game arena, and a Playwright-driven web-QA browser hunting a planted bug in a seeded shop), and a deterministic eval harness runs whole task suites as scored runs and ranks providers — down to the specific model — on a live leaderboard.
 
 > The agent loop is the heart of every modern AI agent. Most frameworks hide it behind a final answer. LoopForge inverts that: the loop emits a typed `TraceEvent` for every meaningful moment, and everything else — the server, the dashboard, the scorer — is just a consumer of that one event stream.
+
+<p align="center">
+  <img src="docs/images/coding-diff.png" alt="LoopForge dashboard: a coding run streaming live with a file-diff panel" width="900">
+  <br>
+  <em>A coding run streaming live — the model's thinking, each tool call, and the file diff it produced, side by side.</em>
+</p>
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <img src="docs/images/sokoban.png" alt="Sokoban arena">
+      <br><sub><b>Sokoban arena</b> — the agent solves a puzzle on a live, animated board.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/images/browser-qa.png" alt="Web QA browser environment">
+      <br><sub><b>Web QA</b> — a Playwright agent drives a real browser and finds a planted checkout bug.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/images/eval-webqa.png" alt="Eval harness leaderboard">
+      <br><sub><b>Eval harness</b> — a suite run as scored pass/fail with live aggregate metrics.</sub>
+    </td>
+  </tr>
+</table>
 
 ## What it is
 

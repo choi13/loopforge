@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          # Tests never launch a browser (Playwright is imported lazily), so
+          # skip the ~100MB Chromium download to keep CI fast.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: Typecheck
+        run: |
+          npm run typecheck -w @loopforge/core
+          npm run typecheck -w @loopforge/server
+          npm run typecheck -w @loopforge/web
+
+      - name: Test
+        run: |
+          npm test -w @loopforge/core
+          npm test -w @loopforge/server
+
+      - name: Build dashboard
+        run: npm run build -w @loopforge/web
