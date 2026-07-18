@@ -29,6 +29,8 @@
   </tr>
 </table>
 
+<sub>📖 <a href="docs/README.md">Documentation</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="docs/INTERVIEW.md">Design notes &amp; interview prep</a></sub>
+
 ## What it is
 
 - **A provider-agnostic agent loop** (`@loopforge/core`) — `AgentLoop` runs observe → reason → act → verify, owns the conversation and tool execution, and emits a `TraceEvent` for every step (iteration start, model request/response with thinking, tool started/finished, env state, run finished).
@@ -47,6 +49,12 @@
 - **Three pluggable environments.** A whole new domain plugs in behind one `RunEnvironment` interface without touching the loop: a sandboxed **coding** project (four path-confined tools + a planted bug to fix, with live file diffs in the dashboard), a **sokoban** game arena (an in-memory engine with a live, animated board), and a **browser** web-QA arena — a Playwright-driven headless Chromium the agent uses to test the seeded **LoopMart** demo shop, whose checkout carries a planted bug (`POST /order` always 500s) for the agent to find and report.
 - **Per-provider model selection.** Every run and eval takes an optional **model override** (the forms show each provider's default as the placeholder), so the same suite can pit specific models — not just providers — against each other.
 - **Deterministic eval harness with a live leaderboard.** Run a suite × N repeats as concurrency-capped real runs; a deterministic, event-based scorer marks each pass/fail (with an anti-cheat so echoing a test file can't false-pass); pass rate, mean iterations, tokens, and duration aggregate live, and a leaderboard keyed by **(provider, model)** ranks backends — and specific models — head-to-head.
+
+  <p align="center">
+    <img src="docs/images/leaderboard.png" alt="Eval leaderboard comparing two local models on the demo suite" width="820">
+    <br>
+    <sub>The demo suite run through the Ollama provider at two model sizes — no API key, no cost. The 8B model solves the coding task but not the spatial puzzle; the 4.5B model clears neither. That honest capability gradient is exactly what a deterministic harness exists to surface.</sub>
+  </p>
 - **Live trace dashboard.** Every run streams over WebSocket — thinking, tool inputs/outputs, token usage, and status — and any eval result row drills into the identical trace + board UI, because an eval run *is* a real run under the hood.
 
 ## Architecture

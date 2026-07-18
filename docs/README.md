@@ -11,6 +11,7 @@ New here? Read in order — each doc builds on the one before it.
 | 3 | **[Environments](ENVIRONMENTS.md)** | The `RunEnvironment` seam: the tool contract, the sandboxed `coding` environment (with live file-diff snapshots), the `sokoban` game arena, the `browser` web-QA arena (Playwright vs the seeded LoopMart shop), and how live state reaches the dashboard as `env_state`. |
 | 4 | **[Eval Harness](EVAL_HARNESS.md)** | Running a whole task suite as real scored runs: the two shipped suites (`demo`, `web-qa`), the deterministic event-based scorer (and its anti-cheat), the concurrency-capped `EvalManager` pipeline, and the live leaderboard keyed by (provider, model). |
 | 5 | **[Development](DEVELOPMENT.md)** | Building, running, and testing LoopForge locally; per-provider prerequisites; the test suites and what they verify; the quality bar; and the roadmap. |
+| — | **[Design notes & interview prep](INTERVIEW.md)** | The design decisions defended as interview Q&A — the single most important choice, the provider-boundary trade-off, how tool-less models are driven, why scoring is deterministic, and the self-audit. |
 
 ## Quick links by task
 
