@@ -2,7 +2,7 @@
 
 > The evaluation layer: run a whole task suite as REAL agent runs, score each one pass/fail with a deterministic event-based scorer, and aggregate into a live leaderboard.
 
-**Why this exists.** A trace dashboard tells you *what an agent did*; an eval harness tells you *whether it worked* — repeatably, across a suite, without a human (or a second model) grading the transcript. The point of the LoopForge eval layer is to prove the harness can tell success from failure on its own: every run is judged purely from its recorded `TraceEvent[]` by a deterministic scorer, so a run either produced the events that constitute success or it did not. That is what makes an aggregate `passRate` mean something. This doc covers what an eval is, the demo suite, the scorer, the `EvalManager` pipeline, the WebSocket messages, and how to run a real-model eval for free.
+**Why this exists.** A trace dashboard tells you *what an agent did*; an eval harness tells you *whether it worked* — repeatably, across a suite, without a human (or a second model) grading the transcript. The point of the LoopForge eval layer is to prove the harness can tell success from failure on its own: every run is judged purely from its recorded `TraceEvent[]` by a deterministic scorer, so a run either produced the events that constitute success or it did not. That is what makes an aggregate `passRate` mean something. This doc covers what an eval is, the two shipped suites (`demo` and `web-qa`), the scorer, the `EvalManager` pipeline, the WebSocket messages, and how to run a real-model eval for free.
 
 ---
 
@@ -24,6 +24,8 @@ export interface EvalSummary {
   suiteId: string;
   suiteName: string;
   provider: "mock" | "anthropic" | "ollama" | "claude-cli";
+  /** Per-provider model override, or null when using the provider default. */
+  model: string | null;
   repeats: number;
   status: "running" | "completed";
   createdAt: number;
@@ -40,9 +42,9 @@ Each `EvalRunResult` carries a run through three states — `pending → running
 
 ---
 
-## The suite: `eval/suites.ts`
+## The suites: `eval/suites.ts`
 
-A suite is a named list of tasks. The one shipped suite, `demo`, is deliberately constructed so that **under the mock provider it lands exactly 2 passes and 2 fails** — a balanced set that demonstrates the scorer distinguishes a real fix from a lazy one and a solved puzzle from an abandoned one.
+A suite is a named list of tasks. Two suites ship. The first, `demo`, is deliberately constructed so that **under the mock provider it lands exactly 2 passes and 2 fails** — a balanced set that demonstrates the scorer distinguishes a real fix from a lazy one and a solved puzzle from an abandoned one.
 
 ```ts
 // packages/server/src/eval/suites.ts
@@ -65,6 +67,28 @@ const DEMO_SUITE: Suite = {
 
 Two coding tasks run over the same planted-bug calculator project; two sokoban tasks run over the same level. What separates a pass from a fail is **behavior, not the task string** — the tasks in each pair are identical.
 
+### The `web-qa` suite
+
+The second suite, `web-qa`, applies the same design to the **browser** environment: two identical QA tasks over the seeded LoopMart shop (whose `POST /order` always 500s — see **[Environments](ENVIRONMENTS.md)**), landing **exactly 1 pass and 1 fail under the mock provider**:
+
+```ts
+// packages/server/src/eval/suites.ts
+const WEB_QA_SUITE: Suite = {
+  id: "web-qa",
+  name: "Web QA suite",
+  tasks: [
+    // q1 browser-pass: the mock walks the full checkout flow, clicks Place
+    // order, observes the planted 500, and reports the bug -> PASS.
+    { id: "q1", environment: "browser", task: BROWSER_DEMO_TASK, mockScriptKey: "browser-find-bug" },
+    // q2 browser-fail: the mock browses home and products but never submits
+    // an order, so the 500 never surfaces -> FAIL.
+    { id: "q2", environment: "browser", task: BROWSER_DEMO_TASK, mockScriptKey: "browser-miss-bug" },
+  ],
+};
+```
+
+The pair proves the browser scorer separates a QA run that *exercises* the broken order flow (`browser-find-bug` = `buildBrowserDemoScript`: home → products → add to cart → fill the name → click *Place order* → observe the 500 → report the bug) from one that merely *browses* (`browser-miss-bug` = `buildStuckBrowserScript`: reads the home and product pages, concludes "everything looks fine," and never submits an order). Under a real provider, whether the model finds the planted bug is — as always — an honest, open question.
+
 ### How the mock lands the designed split
 
 The internal task shape carries a server-only field the public API never sees — the `mockScriptKey`:
@@ -76,21 +100,23 @@ export interface SuiteTaskInternal extends SuiteTask {
 }
 ```
 
-`ScriptKey` selects one of four scripted `MockStep[]` builders (`packages/server/src/mock-scripts.ts`):
+`ScriptKey` selects one of six scripted `MockStep[]` builders (`packages/server/src/mock-scripts.ts`):
 
 ```ts
 // packages/server/src/mock-scripts.ts
 export const MOCK_SCRIPTS: Record<ScriptKey, () => MockStep[]> = {
-  "coding-solve":  buildDemoScript,          // fixes calc.js, re-runs tests -> "All tests passed"
-  "coding-lazy":   buildLazyCodingScript,    // writes a * b (still wrong), never re-runs tests
-  "sokoban-solve": buildSokobanDemoScript,   // 15 real moves that solve the board
-  "sokoban-stuck": buildStuckSokobanScript,  // 4 legal moves that never solve it
+  "coding-solve":     buildDemoScript,           // fixes calc.js, re-runs tests -> "All tests passed"
+  "coding-lazy":      buildLazyCodingScript,     // writes a * b (still wrong), never re-runs tests
+  "sokoban-solve":    buildSokobanDemoScript,    // 15 real moves that solve the board
+  "sokoban-stuck":    buildStuckSokobanScript,   // 4 legal moves that never solve it
+  "browser-find-bug": buildBrowserDemoScript,    // full checkout flow -> observes the planted 500
+  "browser-miss-bug": buildStuckBrowserScript,   // browses only, never submits an order
 };
 ```
 
 Two things are worth stressing:
 
-- **The mock's tool calls execute for real.** The scripted steps only supply the model's *thinking and tool-call decisions*; the agent loop actually runs `write_file`, `run_command`, `move`, etc. against the live environment. `coding-solve` really writes the fixed `calc.js` and really shells out `node test.js`; `sokoban-solve`'s 15 moves are applied to a real `SokobanGame`. So the scorer is grading genuine effects, not a canned verdict. The designed split is a property of the *scripts' behavior*, and the scorer discovers it independently.
+- **The mock's tool calls execute for real.** The scripted steps only supply the model's *thinking and tool-call decisions*; the agent loop actually runs `write_file`, `run_command`, `move`, `click`, etc. against the live environment. `coding-solve` really writes the fixed `calc.js` and really shells out `node test.js`; `sokoban-solve`'s 15 moves are applied to a real `SokobanGame`; `browser-find-bug` really drives headless Chromium through LoopMart's checkout and really receives the 500 page. So the scorer is grading genuine effects, not a canned verdict. The designed split is a property of the *scripts' behavior*, and the scorer discovers it independently.
 - **Only the mock replays scripts.** In `runOne`, the script key is passed **only** when the provider is `mock`; every real provider gets `undefined` and runs the model on the task for real:
 
 ```ts
@@ -99,7 +125,7 @@ mockScriptKey:
   record.summary.provider === "mock" ? task.mockScriptKey : undefined,
 ```
 
-So the 2-pass/2-fail outcome is guaranteed for `mock` but is an *honest, open question* for `ollama`, `claude-cli`, and `anthropic` — whatever those models do on t1–t4 is what gets scored.
+So the designed splits (2/2 on `demo`, 1/1 on `web-qa`) are guaranteed for `mock` but are an *honest, open question* for `ollama`, `claude-cli`, and `anthropic` — whatever those models do on the tasks is what gets scored.
 
 ---
 
@@ -118,6 +144,7 @@ export function scoreRun(
     return { passed: false, reason: `run ${runFinished.status}` };
   }
   if (environment === "coding") return scoreCoding(events);
+  if (environment === "browser") return scoreBrowser(events);
   return scoreSokoban(events);
 }
 ```
@@ -156,6 +183,27 @@ function scoreSokoban(events: TraceEvent[]): RunScore {
 }
 ```
 
+- **Browser PASS** requires that a **successful** `click` observed the planted checkout error — i.e. the agent clicked through to the broken order submission and saw the 500 page. The verdict reasons are `"found the checkout bug"` and `"checkout bug never surfaced"`:
+
+```ts
+// packages/server/src/eval/scorer.ts
+function scoreBrowser(events: TraceEvent[]): RunScore {
+  for (const event of events) {
+    if (
+      event.type === "tool_finished" &&
+      event.name === "click" &&
+      !event.isError &&
+      event.output.includes("Internal Server Error (500)")
+    ) {
+      return { passed: true, reason: "found the checkout bug" };
+    }
+  }
+  return { passed: false, reason: "checkout bug never surfaced" };
+}
+```
+
+The `click`-only, `!isError` conditions are the browser environment's anti-cheat, in the same spirit as the coding command correlation: reading *about* the error elsewhere (an errored click echoing the text, or a non-click tool surfacing it) does not count — the bug must surface through the real flow. Both cases are locked down by regression tests (`packages/server/src/eval/scorer.test.ts`). This is exactly why the `browser-miss-bug` script fails: it browses the home and product pages, everything renders fine, and no click ever reaches the broken `POST /order` — so no qualifying event exists in its trace.
+
 ### Why the command-correlation matters (the anti-cheat)
 
 The string `"All tests passed"` is not proof a suite ran — it is also a literal in `test.js`'s own source:
@@ -167,7 +215,7 @@ console.log("All tests passed");
 
 So a lazy agent that just `cat test.js` (or reads the file) would surface that phrase in a tool result. The scorer defeats this by **correlating the phrase with the command that produced it**: the winning `tool_finished` must trace back through its `toolCallId` to a command that `isTestExecution` accepts. `cat test.js` and `read_file` are rejected; only `node test.js` (or an `npm`/`npx test`) counts. **Echoing the source cannot false-pass.** This is exactly why the `coding-lazy` script fails: it runs the failing test once (no success line yet), writes a still-wrong `a * b`, and *never re-runs* — so no passing test-execution event ever exists in its trace.
 
-**Why event-based determinism is the whole point.** Grading from the event log — rather than inspecting the final sandbox or asking a model — means the verdict is (a) reproducible: the same `TraceEvent[]` always scores the same way; (b) auditable: `reason` names the exact evidence (`"tests passed"`, `"puzzle solved in 15 moves"`, `"tests never passed"`); and (c) trustworthy as a metric: the harness demonstrably separates the `-solve` scripts from the `-lazy`/`-stuck` ones with zero model in the grading loop. An LLM judge could be fooled by a confident final summary; a deterministic scorer that demands the *actual success events* cannot.
+**Why event-based determinism is the whole point.** Grading from the event log — rather than inspecting the final sandbox or asking a model — means the verdict is (a) reproducible: the same `TraceEvent[]` always scores the same way; (b) auditable: `reason` names the exact evidence (`"tests passed"`, `"puzzle solved in 15 moves"`, `"found the checkout bug"`, `"tests never passed"`); and (c) trustworthy as a metric: the harness demonstrably separates the `-solve`/`-find-bug` scripts from the `-lazy`/`-stuck`/`-miss-bug` ones with zero model in the grading loop. An LLM judge could be fooled by a confident final summary; a deterministic scorer that demands the *actual success events* cannot.
 
 ---
 
@@ -247,6 +295,9 @@ private runOne(record: EvalRecord, plan: EvalPlan): Promise<void> {
       runId: result.runId,
       mockScriptKey:
         record.summary.provider === "mock" ? task.mockScriptKey : undefined,
+      // The eval-wide model override rides along on every run it creates
+      // (RunManager ignores it for the mock provider).
+      model: record.summary.model ?? undefined,
       onFinished: ({ events, runFinished }) => {
         result.status = "scored";
         result.runStatus = runFinished.status;
@@ -355,10 +406,10 @@ case "eval_updated": dispatch({ type: "eval_upsert", eval: msg.eval });        b
 
 `EvalView` (`packages/web/src/components/EvalView.tsx`) renders four live sections off that stream:
 
-- **Header + progress bar** — `done / total`, provider badge, repeat count, a `running`/`completed` pill.
+- **Header + progress bar** — `done / total`, provider badge (plus the model override when one was set), repeat count, a `running`/`completed` pill.
 - **Aggregate cards** — pass rate (with a pass/fail split bar), mean iterations, mean tokens (in / out), mean duration, each showing `—` until at least one run is scored.
 - **Results table** — one row per `EvalRunResult`: task id, environment badge, live status, a `PASS`/`FAIL` chip with the scorer's `reason`, and per-run iterations / tokens / duration. Rows are clickable and drill into the same trace + board UI a manual run uses (via the pre-assigned `runId`).
-- **Leaderboard** — a cross-provider ranking for the suite. It takes the **latest eval per provider** for that `suiteId` and sorts by pass rate. It only renders once **two or more** providers have an eval for the suite (a single provider isn't a board), so it's how you compare, e.g., `mock` vs `ollama` vs `anthropic` on the demo suite side by side.
+- **Leaderboard** — a cross-backend ranking for the suite, keyed by **(provider, model)**. It takes the **latest eval per (provider, model) pair** for that `suiteId` (via `leaderKey` in `packages/web/src/components/EvalView.tsx`) and sorts by pass rate, rendering the model next to the provider badge when an override was set. It only renders once **two or more** (provider, model) entries have an eval for the suite (a single contender isn't a board), so it's how you compare `mock` vs `ollama` vs `anthropic` — or two specific models under the *same* provider — side by side.
 
 Because every `eval_updated` carries the whole summary, the table, cards, and leaderboard all update in place as runs finish — no polling.
 
@@ -366,13 +417,17 @@ Because every `eval_updated` carries the whole summary, the table, cards, and le
 
 ## Running a real-model eval
 
-Creating an eval is a `POST /api/evals` (or the **New eval** form): pick a suite, a provider, and `repeats` (validated 1–5, default 1; suite defaults to `demo`). The provider choice is where cost and honesty come in.
+Creating an eval is a `POST /api/evals` (or the **New eval** form): pick a suite, a provider, `repeats` (validated 1–5, default 1; suite defaults to `demo`), and optionally a **model**. The provider choice is where cost and honesty come in.
+
+### The model override
+
+The optional `model` field pins the exact model the whole eval runs on. It is validated by the shared `parseModel` helper (`packages/server/src/index.ts` — must be a string, trimmed, empty treated as absent, at most 120 characters; anything else is a 400), stored on the `EvalSummary` as `model: string | null`, and forwarded by `runOne` to **every** run the eval creates (`RunManager` ignores it for `mock`, whose behavior comes from scripts). The **New eval** form shows each provider's default as the input placeholder and only sends the field when a non-empty override was typed. Because the leaderboard is keyed by (provider, model), two evals of the same suite under `ollama` with different models — say `llama3:latest` vs a pulled alternative — appear as **separate contenders**, which is the point: the board compares specific models head-to-head, not just backends. See **[Providers](PROVIDERS.md)** for the per-provider defaults.
 
 ### Free: `ollama` (local model)
 
 `ollama` runs a local model through the ReAct JSON adapter — **no API key, no per-token cost**. This makes it the honest way to see what a *real* model (not a script) does on the suite. Expect a genuine, mixed capability profile rather than the mock's designed 2/2:
 
-> **Typical `llama3` profile on the demo suite:** it usually **passes the coding tasks** (find the `a - b` bug, write `a + b`, re-run `node test.js`) but **fails the sokoban tasks** (multi-step push planning without trapping a box is hard for a small local model) — landing around a **~50% pass rate**. This is a feature of the harness, not a bug: the scorer reports the model's real strengths and weaknesses, and the leaderboard puts that next to `mock`'s 100%. Exact numbers vary by model and run.
+> **Typical `llama3` profile on the demo suite:** it usually **passes the coding tasks** (find the `a - b` bug, write `a + b`, re-run `node test.js`) but **fails the sokoban tasks** (multi-step push planning without trapping a box is hard for a small local model) — landing around a **~50% pass rate**. This is a feature of the harness, not a bug: the scorer reports the model's real strengths and weaknesses, and the leaderboard puts that next to `mock`'s designed 50% (2 of 4). Exact numbers vary by model and run.
 
 ### Costed: `claude-cli` and `anthropic`
 
@@ -387,6 +442,6 @@ Creating an eval is a `POST /api/evals` (or the **New eval** form): pick a suite
 
 - **[Architecture](ARCHITECTURE.md)** — how an eval reuses `RunManager.createRun` and the `TraceEvent` log the scorer reads.
 - **[Providers](PROVIDERS.md)** — the four providers a suite can run under, and their cost profiles.
-- **[Environments](ENVIRONMENTS.md)** — the coding and sokoban success conditions the scorer checks.
+- **[Environments](ENVIRONMENTS.md)** — the coding, sokoban, and browser success conditions the scorer checks.
 - **[Development](DEVELOPMENT.md)** — running the harness locally and what the scorer test suite verifies.
 - **[Documentation index](README.md)** — all docs in reading order.

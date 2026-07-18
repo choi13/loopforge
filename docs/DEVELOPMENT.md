@@ -12,6 +12,13 @@ LoopForge is a TypeScript project using **npm workspaces** (`packages/*`). There
 
 - **Node.js** — Node 22 LTS is recommended (it matches `@types/node@^22`). Node 20+ works for the server and web, but the test scripts pass a glob to `node --test` (`"src/**/*.test.ts"`), which needs a Node whose test runner expands globs — use Node 22 to be safe.
 - **npm** — v10+ (ships with Node 22), for workspace support.
+- **Playwright Chromium** *(optional — browser environment only)* — the **browser** (Web QA) environment drives a headless Chromium through Playwright. The npm package installs with the workspace, but the browser binary is a separate one-time download (~95 MB):
+
+  ```bash
+  npx playwright install chromium
+  ```
+
+  This is genuinely optional: Playwright is imported lazily (`packages/server/src/environments/browser.ts`), so the server boots and the coding/sokoban environments work without it — browser tool calls just return errors that include this exact install hint.
 
 Install once from the repo root; workspaces are hoisted:
 
@@ -37,7 +44,7 @@ npm run dev:server        # -> tsx watch packages/server/src/index.ts
 npm run dev:web           # -> vite
 ```
 
-Open http://localhost:5173. Vite proxies `/api` and `/ws` to the server (see `packages/web/vite.config.ts`), so the dashboard talks to `:8787` transparently. Start a **mock** run to see the loop stream live — no API key, its tool calls execute for real against `sandbox/demo-project`.
+Open http://localhost:5173. Vite proxies `/api` and `/ws` to the server (see `packages/web/vite.config.ts`), so the dashboard talks to `:8787` transparently. Start a **mock** run to see the loop stream live — no API key, its tool calls execute for real against a per-run temp copy of the seeded demo project (see [ENVIRONMENTS.md](ENVIRONMENTS.md) — runs never touch `sandbox/demo-project` itself). The server also boots the seeded **LoopMart** demo shop (the browser environment's QA target, and the only origin its tools may visit) on **http://localhost:8788** (`packages/server/src/target-site.ts`).
 
 ```mermaid
 flowchart LR
@@ -110,11 +117,11 @@ There is no aggregate `npm test` at the root — the two `test` scripts live on 
 
 ## 4. Testing
 
-The suites are plain `node:test` files run through `tsx`, colocated next to the code they cover (`*.test.ts`). **28 tests total, all green** (17 in core, 11 in server).
+The suites are plain `node:test` files run through `tsx`, colocated next to the code they cover (`*.test.ts`). **53 tests total, all green** (17 in core, 36 in server).
 
 ```bash
 npm test -w @loopforge/core     # 17 tests
-npm test -w @loopforge/server   # 11 tests
+npm test -w @loopforge/server   # 36 tests
 ```
 
 ### What each suite covers
@@ -143,7 +150,15 @@ test("REGRESSION: a symlink pointing outside the sandbox is rejected", async () 
 
 **`packages/server/src/environments/sokoban.test.ts`** — the `SokobanGame` engine (5 tests). Fresh-game invariants, wall-blocked moves leave state unchanged, pushing a box onto a goal solves a level, a box can't be pushed into another box, and the regression that the *scripted demo solution actually solves the level* (it replays every `move` from `buildSokobanDemoScript()` and asserts `solved === true`).
 
-**`packages/server/src/eval/scorer.test.ts`** — the deterministic, event-based `scoreRun` (6 tests). Coding PASS requires a `run_command` that *executes* the tests and prints `All tests passed`; sokoban PASS requires a solved `env_state`; a `failed` run is always a fail. The headline regression protects against a lazy false-pass:
+**`packages/server/src/environments/coding.test.ts`** — the coding environment's `coding_files` diff snapshots plus the provider model override (6 tests). `write_file` publishes cumulative snapshots with `before` frozen at the first write, failed writes and non-write tools publish nothing, before/after beyond 50,000 chars are truncated — and three tests pin that `OllamaProvider` / `ClaudeCliProvider` / `AnthropicProvider` each take the model override as their first constructor argument (so `CreateRunOptions.model` can never silently stop reaching them).
+
+**`packages/server/src/environments/browser.test.ts`** — the browser environment without a real browser (5 tests). The four QA tools and demo task are exposed; `goto` rejects non-sandbox origins and malformed URLs *without launching Chromium*; `click`/`fill` validate their inputs the same way; and the paired demo scripts diverge exactly as designed (q1's script ends by clicking *Place order*, q2's never does).
+
+**`packages/server/src/target-site.test.ts`** — the seeded LoopMart shop (5 tests, against a real `http.Server` on an ephemeral port). Home, products (3 items with *Add to cart* links), and the checkout form serve correctly; unknown paths 404; and the planted bug is pinned exactly — `POST /order` is always a 500 carrying the `Internal Server Error (500)` / `ERR_ORDER_FAILED` markers the scorer keys on.
+
+**`packages/server/src/eval/suites.test.ts`** — the suite definitions (4 tests). The `web-qa` suite has exactly 2 browser tasks with the demo task text, both suites are listed, the scripts behind q1/q2 actually differ on the *Place order* click, and a regression pins the demo suite at exactly 4 tasks.
+
+**`packages/server/src/eval/scorer.test.ts`** — the deterministic, event-based `scoreRun` (11 tests). Coding PASS requires a `run_command` that *executes* the tests and prints `All tests passed`; sokoban PASS requires a solved `env_state`; browser PASS requires a **successful `click`** whose output contains the planted 500 (an errored click or a non-click tool surfacing the text does not pass); a `failed` run is always a fail. The headline regression protects against a lazy false-pass:
 
 ```ts
 test("REGRESSION: `cat test.js` echoing the source string does NOT pass", () => {
@@ -187,11 +202,13 @@ The takeaway for a reviewer: the interesting bugs here are the *quiet* ones — 
 | 3 | Eval harness — task suites, parallel scored runs, pass-rate aggregation, leaderboard, per-run sandbox isolation | ✅ Done |
 | — | Local providers: **Ollama** (no-key local model) + **Claude CLI** (local account) | ✅ Done |
 | — | Audit hardening + `node:test` suites (11 bugs fixed, 28 tests) | ✅ Done |
-| 4 | Richer coding environment — multi-file tasks + diff view | ⏳ Next |
-| 5 | Autonomous QA agent environment (Playwright-driven) | ⏳ Next |
-| — | Model-selection-per-provider so the leaderboard compares specific models head-to-head | ⏳ Next |
+| 4 | Per-provider **model selection** (leaderboard keyed by provider + model) + coding **file-diff view** | ✅ Done |
+| 5 | Autonomous web-QA agent environment (Playwright) vs the seeded LoopMart shop | ✅ Done |
+| — | Multi-file coding tasks | ⏳ Next |
+| — | More eval suites | ⏳ Next |
+| — | CI | ⏳ Next |
 
-The phase history is legible in git: `cbf9213` (Phase 1), `ef973e6` (Phase 2), `067812a` (Phase 3), `976af7c` (Ollama), `7a180b5` (Claude CLI), `5f31a77` (audit hardening + tests).
+The phase history is legible in git: `cbf9213` (Phase 1), `ef973e6` (Phase 2), `067812a` (Phase 3), `976af7c` (Ollama), `7a180b5` (Claude CLI), `5f31a77` (audit hardening + tests), `2d2143c` (Phase 4), `fdaffdb` (Phase 5).
 
 ---
 

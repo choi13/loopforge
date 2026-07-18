@@ -75,19 +75,19 @@ The request is assembled in one place — `provider.complete({ system, messages,
 |---|---|---|---|---|---|
 | **`mock`** | Scripted `MockStep[]`; deterministic; tool calls execute for real | No | None | n/a (script emits calls directly) | none |
 | **`ollama`** | Local model via Ollama HTTP (`llama3:latest` default) | No | None (local compute) | No — model advertises only `completion` | ReAct |
-| **`claude-cli`** | The locally-installed Claude Code CLI (`claude -p`) driven as a single-turn model | No — uses the CLI's logged-in account | **Real per-iteration cost/quota** on that account | No — tools disabled on purpose | ReAct (planner mode) |
+| **`claude-cli`** | The locally-installed Claude Code CLI (`claude -p`, `sonnet` default) driven as a single-turn model | No — uses the CLI's logged-in account | **Real per-iteration cost/quota** on that account | No — tools disabled on purpose | ReAct (planner mode) |
 | **`anthropic`** | The Claude API via `@anthropic-ai/sdk` (`claude-opus-4-8` default) | **Yes** — `ANTHROPIC_API_KEY` | Paid API tokens | **Yes** — the only native-tools provider | none |
 
-**How selection works.** The dashboard's `NewRunForm` / `NewEvalForm` posts a `provider` string; the REST layer validates it against the closed set `"mock" | "anthropic" | "ollama" | "claude-cli"` (`packages/server/src/index.ts`) and `RunManager.createRun` maps it to a concrete class:
+**How selection works.** The dashboard's `NewRunForm` / `NewEvalForm` posts a `provider` string; the REST layer validates it against the closed set `"mock" | "anthropic" | "ollama" | "claude-cli"` (`packages/server/src/index.ts`) and `RunManager.createRun` maps it to a concrete class, passing along the optional model override (below):
 
 ```ts
 // packages/server/src/run-manager.ts
 modelProvider =
   provider === "ollama"
-    ? new OllamaProvider()
+    ? new OllamaProvider(options.model)
     : provider === "claude-cli"
-      ? new ClaudeCliProvider()
-      : new AnthropicProvider();
+      ? new ClaudeCliProvider(options.model)
+      : new AnthropicProvider(options.model);
 ```
 
 `mock` is handled on a separate branch that also prepares the environment and loads a script. For `anthropic`, both the run and eval routes reject the request up front with HTTP 400 if `ANTHROPIC_API_KEY` is not set on the server (`packages/server/src/index.ts`). The type alias lives at `packages/server/src/run-manager.ts`:
@@ -95,6 +95,42 @@ modelProvider =
 ```ts
 export type ProviderName = "mock" | "anthropic" | "ollama" | "claude-cli";
 ```
+
+---
+
+## The per-provider model override
+
+Each real provider defaults to one model, but the model is **first-constructor-argument configurable** end to end, so the same provider can be run — and ranked on the leaderboard — under different models.
+
+**The API field.** `POST /api/runs` and `POST /api/evals` both accept an optional `"model"` string, parsed by the shared `parseModel` helper (`packages/server/src/index.ts`):
+
+```ts
+// packages/server/src/index.ts — parseModel
+if (raw === undefined) return { ok: true, model: undefined };
+if (typeof raw !== "string") return { ok: false, error: "model must be a string" };
+const trimmed = raw.trim();
+if (trimmed.length > 120) {
+  return { ok: false, error: "model must be at most 120 characters" };
+}
+return { ok: true, model: trimmed || undefined };
+```
+
+- Absent → the provider's constructor default applies.
+- A non-string, or a string longer than **120 characters** → HTTP **400**.
+- Whitespace is trimmed; an empty (or all-whitespace) string is treated as absent.
+- **Ignored for `mock`** — the scripted provider has no model to swap, so `RunManager` only applies the override on the real-provider branch.
+
+**Where it lands.** The parsed value travels as `CreateRunOptions.model` (`packages/server/src/run-manager.ts`) straight into the provider constructor. The defaults, from each constructor signature:
+
+| Provider | Default model |
+|---|---|
+| `ollama` | `llama3:latest` |
+| `claude-cli` | `sonnet` |
+| `anthropic` | `claude-opus-4-8` |
+
+**On evals.** The override is eval-wide: `EvalManager` records it on the summary as `model: string | null` (`null` = provider default) and forwards it to every run the eval creates, and the dashboard's leaderboard keys entries by **(provider, model)** so two models under the same provider rank as separate contenders (**[Eval Harness](EVAL_HARNESS.md)**).
+
+**In the dashboard.** Both forms show a **Model** input for non-mock providers whose placeholder is that provider's default (`MODEL_PLACEHOLDERS` in `packages/web/src/components/NewRunForm.tsx`); switching provider resets the field, since model names are provider-specific.
 
 ---
 

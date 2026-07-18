@@ -2,7 +2,7 @@
 
 > The environment layer: the pluggable seam that gives the agent loop something to *do* — a set of tools, a system prompt, and (optionally) live state — without the loop, the providers, or the dashboard knowing which world the agent is in.
 
-**Why this exists.** The `AgentLoop` is deliberately domain-blind: it drives a `ModelProvider`, executes whatever `Tool[]` it is handed, and emits `TraceEvent`s. What the agent actually operates on — a code sandbox, a game board, anything else — lives behind one interface, `RunEnvironment`. That single seam is why a whole new domain (Sokoban) was added in a later phase without touching the core loop, and why the same four providers run against either world unchanged. This doc covers the environment contract, the two shipped environments, how live state reaches the dashboard as `env_state`, and how to add a third.
+**Why this exists.** The `AgentLoop` is deliberately domain-blind: it drives a `ModelProvider`, executes whatever `Tool[]` it is handed, and emits `TraceEvent`s. What the agent actually operates on — a code sandbox, a game board, a live browser, anything else — lives behind one interface, `RunEnvironment`. That single seam is why whole new domains (first Sokoban, then a Playwright-driven browser) were added in later phases without touching the core loop, and why the same four providers run against any of the three worlds unchanged. This doc covers the environment contract, the three shipped environments, how live state reaches the dashboard as `env_state`, and how to add a fourth.
 
 ---
 
@@ -12,7 +12,7 @@ An environment supplies everything run-specific the harness plugs into the loop:
 
 ```ts
 // packages/server/src/environments/index.ts
-export type EnvironmentName = "coding" | "sokoban";
+export type EnvironmentName = "coding" | "sokoban" | "browser";
 
 /** Callback the server wires to append + broadcast an env_state trace event. */
 export type PublishState = (state: unknown) => void;
@@ -51,14 +51,16 @@ export function createEnvironment(
 ): RunEnvironment {
   switch (name) {
     case "coding":
-      return createCodingEnvironment(runId);
+      return createCodingEnvironment(runId, publishState);
     case "sokoban":
       return createSokobanEnvironment(publishState);
+    case "browser":
+      return createBrowserEnvironment(publishState);
   }
 }
 ```
 
-`RunManager.createRun` calls this once, passing a `publishState` closure it owns (which stamps a monotonic `seq` and routes an `env_state` event through the normal broadcast path) and the `runId`. The coding environment needs the `runId` to name its private sandbox directory; the sokoban environment needs `publishState` to push board snapshots. Each takes only what it uses.
+`RunManager.createRun` calls this once, passing a `publishState` closure it owns (which stamps a monotonic `seq` and routes an `env_state` event through the normal broadcast path) and the `runId`. The coding environment needs the `runId` to name its private sandbox directory and `publishState` for its file-diff snapshots; the sokoban and browser environments need `publishState` to push board / page snapshots. Each takes only what it uses.
 
 ### Where the hooks fire in the run lifecycle
 
@@ -125,16 +127,23 @@ The loop strips each tool down to its `{ name, description, inputSchema }` for t
 
 ## The `coding` environment
 
-A sandboxed JavaScript project the agent debugs. `createCodingEnvironment(runId)` (`packages/server/src/environments/coding.ts`) wires four tools rooted in a **per-run** temp directory, plus the coding system prompt and the scripted bug-fix demo.
+A sandboxed JavaScript project the agent debugs. `createCodingEnvironment(runId, publishState)` (`packages/server/src/environments/coding.ts`) wires four tools rooted in a **per-run** temp directory, plus the coding system prompt and the scripted bug-fix demo. The `write_file` tool is additionally wrapped to publish live file-diff snapshots (below).
 
 ```ts
 // packages/server/src/environments/coding.ts
-export function createCodingEnvironment(runId: string): RunEnvironment {
+export function createCodingEnvironment(
+  runId: string,
+  publishState: PublishState,
+): RunEnvironment {
   const sandboxDir = path.join(os.tmpdir(), `loopforge-run-${runId}`);
   resetDemoSandbox(sandboxDir);           // seed the BROKEN calc.js + tests
 
+  const tools = createCodingTools(sandboxDir).map((tool) =>
+    tool.name === "write_file" ? withDiffSnapshots(tool, sandboxDir, publishState) : tool,
+  );
+
   return {
-    tools: createCodingTools(sandboxDir),
+    tools,
     systemPrompt: SYSTEM_PROMPT,
     demoTask: DEMO_TASK,
     buildDemoScript,
@@ -167,6 +176,28 @@ function add(a, b) {
 | `write_file` | `{ path, content }` | Writes a file, creating parent dirs; overwrites. Returns the byte count. |
 | `list_files` | `{ path? }` | Recursive listing; skips `node_modules` / `.git` / `dist`; capped at 200 files. |
 | `run_command` | `{ command }` | Runs a shell command with `cwd` = sandbox root, **30s timeout**, 1 MB buffer; returns stdout, stderr, and `[exit code: n]`. Honors the run's abort signal. |
+
+### `coding_files` diff snapshots — live file diffs on the trace stream
+
+`withDiffSnapshots` (`packages/server/src/environments/coding.ts`) wraps the sandbox `write_file` tool so every **successful** write publishes a cumulative `env_state` snapshot:
+
+```ts
+// the env_state shape for coding runs (server<->web contract)
+{
+  kind: "coding_files",
+  changes: [{ path, before, after }],   // one entry per file ever written this run
+}
+```
+
+The semantics are chosen so the dashboard can render a stable, honest diff:
+
+- **Cumulative, in first-write order.** `changes` lists every file written so far this run, keyed by resolved absolute path (so `a.js` and `./a.js` share one entry), in the order each file was first touched.
+- **`before` is frozen at the first write.** It captures the content that existed before the run's *first* write of that file (`null` when the file did not exist), and never changes afterwards — so the diff always reads "what this run did to the file," not "the last incremental edit." `after` tracks the most recently written content.
+- **50k truncation.** Both sides are cut at `SNAPSHOT_MAX_CHARS` (50,000 chars) with an `… (truncated)` suffix, mirroring `read_file`'s cap.
+- **Failed writes publish nothing.** The wrapper delegates to the real tool first; an error result (e.g. a path escaping the sandbox) records and publishes no snapshot.
+- **Published copies are immutable.** Each publish deep-copies the entries, so snapshots already appended to the run log never mutate when a later write advances `after`.
+
+On the dashboard, `FileChangesPanel` (`packages/web/src/components/FileChangesPanel.tsx`) renders the latest `coding_files` snapshot in the same layout slot the Sokoban board uses: one card per file (with a `new file` badge when `before === null`), each showing a collapsed unified diff computed by the dependency-free LCS differ in `packages/web/src/diff.ts` (`computeLineDiff` + `collapseContext` — common prefix/suffix trimmed first, long unchanged runs folded into "⋯ n unchanged lines" rows).
 
 ### Sandbox confinement is `realpath`-based, not lexical
 
@@ -251,6 +282,87 @@ The environment also sets `onRunStart: () => publishState(game.state())` so the 
 
 ---
 
+## The `browser` environment
+
+An autonomous **web-QA agent**: the loop drives a real headless Chromium (via [Playwright](https://playwright.dev)) against a seeded demo shop and is asked to verify the checkout flow — which is deliberately broken. `createBrowserEnvironment(publishState)` (`packages/server/src/environments/browser.ts`) wires four browser tools, the QA system prompt, and the scripted find-the-bug demo.
+
+### The target: LoopMart and its planted bug
+
+The server itself hosts the QA target — **LoopMart**, a tiny deterministic shop served from inline HTML by `startTargetSite` (`packages/server/src/target-site.ts`) on port **8788**, separate from the LoopForge API on 8787. It has a home page, a three-product catalog (each with an *Add to cart* link), and a checkout form. The checkout flow carries **one planted bug**:
+
+```ts
+// packages/server/src/target-site.ts
+/** THE PLANTED BUG: placing an order always fails with a 500. */
+if (req.method === "POST" && pathname === "/order") {
+  // Drain the form body we never read, then fail — this is the bug.
+  req.resume();
+  sendHtml(res, 500, ORDER_ERROR_PAGE);
+  return;
+}
+```
+
+The error page renders `Internal Server Error (500)` with the code `ERR_ORDER_FAILED` — the exact marker the eval scorer (and the dashboard's bug chip) looks for. The browser environment's whole reason to exist is finding it.
+
+### The origin allowlist
+
+The QA sandbox may visit **only** the seeded shop. `TARGET_ORIGIN` (`http://localhost:8788`) is checked in `goto` **before any browser work** — a blocked URL returns an `isError` result without ever launching Chromium:
+
+```ts
+// packages/server/src/environments/browser.ts
+/** The only origin the QA sandbox may visit. */
+export const TARGET_ORIGIN = "http://localhost:8788";
+
+if (parsed.origin !== TARGET_ORIGIN) {
+  return { output: ORIGIN_BLOCKED_MESSAGE, isError: true };
+}
+```
+
+### The four tools
+
+All four target visible text rather than CSS selectors, so a model can drive them from `read_page` output alone:
+
+| Tool | Input | Behavior |
+|---|---|---|
+| `goto` | `{ url }` | Navigates to a URL on `TARGET_ORIGIN` (anything else is blocked); waits for load; returns a page summary. |
+| `read_page` | — | Summarizes the current page: URL, title, headings, visible body text (truncated at 2,000 chars), and every clickable link/button by its visible text. |
+| `click` | `{ text }` | Clicks the first `a`/`button` whose visible text matches (case-insensitive, trimmed); arms a `framenavigated` listener *before* clicking so a fast navigation or form POST is never missed (5s timeout if none); returns a summary of the resulting page. On a miss it lists the clickables that *are* available. |
+| `fill` | `{ field, value }` | Fills the first `input`/`textarea`/`select` whose placeholder, `aria-label`, or associated label matches the field name (case-insensitive, substring). |
+
+### `env_state`: the page snapshot with a screenshot
+
+After every **successful** `goto` or `click` (the two tools that change the page), the environment publishes a snapshot including a real viewport screenshot, so the dashboard shows what the agent sees:
+
+```ts
+// packages/server/src/environments/browser.ts
+export interface BrowserState {
+  kind: "browser";
+  url: string;
+  title: string;
+  steps: number;
+  /** data:image/jpeg;base64,... viewport screenshot. */
+  screenshot: string;
+}
+```
+
+Screenshots are kept light on purpose — an 800×600 viewport captured as JPEG at quality 45, embedded as a data URL — because each snapshot rides the normal `env_state` trace pipeline into the run log and over the WebSocket.
+
+### Lifecycle: lazy Playwright, graceful degradation
+
+Playwright is a real dependency (`packages/server/package.json`) but it is imported **lazily inside the launcher, with a non-literal specifier** so `tsc` never resolves the module — typechecking and server boot succeed even when the package or its Chromium binary is missing. The first tool call that needs a page triggers the launch; a failed launch is cached (`pagePromise`) so every later tool reports the same actionable error instead of retrying:
+
+- missing package → `The "playwright" package is not installed (…). Run npm install, then npx playwright install chromium.`
+- missing binary → `Failed to launch headless Chromium (…). Install the browser binary with: npx playwright install chromium`
+
+Either way the tools return `isError` results, the run finishes normally, and nothing crashes the server. `cleanup` closes the page and browser best-effort (async, failures swallowed) when the run ends.
+
+The environment also provides `buildDemoScript` (`buildBrowserDemoScript`) — the scripted mock demo that walks home → products → add to cart → fill the name → *Place order*, observes the planted 500, and reports the bug with reproduction steps. Its negative twin, `buildStuckBrowserScript`, browses without ever submitting an order (see **[Eval Harness](EVAL_HARNESS.md)** for how the `web-qa` suite uses both).
+
+### How `BrowserPanel` renders it
+
+`BrowserPanel` (`packages/web/src/components/BrowserPanel.tsx`) occupies the same layout slot as the Sokoban board and renders the **latest** `browser` snapshot: the live URL readout, the viewport screenshot, and a step counter. It also shows a red **BUG OBSERVED** chip once any successful `click` result in the run's event stream contains `Internal Server Error (500)` — deliberately mirroring the server-side browser scorer, so what the panel flags is exactly what the eval would score as a pass. Before the first snapshot arrives it shows a "waiting for the first page…" placeholder (snapshots are validated by `isBrowserState` in `packages/web/src/browserState.ts`, so a malformed payload degrades to the placeholder instead of crashing).
+
+---
+
 ## `env_state`: live state on the trace pipeline
 
 An environment's live state does not travel on a side channel — it flows through the **same** `TraceEvent` stream as loop events, so the dashboard, the event log, and the scorer all see it. The environment calls `publishState(state)`; `RunManager` wraps it in an `env_state` event, stamps a monotonic per-run `seq`, and broadcasts it like any other trace event:
@@ -284,6 +396,7 @@ Success is defined per environment, and judged **only** from the recorded events
 
 - **coding** passes iff some `run_command` that *actually executes the tests* (correlated by `toolCallId` back to a command `isTestExecution` accepts — `node … test`, `npm test`, `npx … test`) finished without error and printed `"All tests passed"`. Reading or `cat`-ing `test.js` — whose source contains that literal — cannot false-pass.
 - **sokoban** passes iff some published `env_state` reports `solved === true`.
+- **browser** passes iff some **successful** `click` result contains `"Internal Server Error (500)"` — the agent must actually exercise the broken order flow; an errored click or a non-click tool surfacing the text does not count.
 
 Because the sokoban verdict is literally "did a `solved` snapshot ever appear," the environment's decision to publish only on real state changes *is* the scoring signal. Full details in **[Eval Harness](EVAL_HARNESS.md)**.
 
@@ -301,7 +414,7 @@ The seam is small on purpose — a new world is a contained addition that touche
 
 4. **Wire the REST validation.** Extend the `environment` allow-list in `POST /api/runs` (`packages/server/src/index.ts`) so the new name is accepted.
 
-5. **Surface it in the dashboard.** Add the option to the run form and, if it has custom state, a renderer for its `env_state` (the Sokoban board is the model to follow).
+5. **Surface it in the dashboard.** Add the option to the run form and, if it has custom state, a renderer for its `env_state` (`SokobanBoard`, `FileChangesPanel`, and `BrowserPanel` are the models to follow — each pairs a runtime type guard with a panel in the arena slot).
 
 6. **Optionally add a demo + suite tasks.** Provide `buildDemoScript` (and a `prepare` reset) so `mock` runs and evals can exercise it deterministically, then add tasks to a suite (**[Eval Harness](EVAL_HARNESS.md)**).
 
