@@ -61,7 +61,7 @@ export class ClaudeCliProvider implements ModelProvider {
       "json",
     ];
 
-    const { stdout, stderr, code } = await run(this.binary, args, prompt);
+    const { stdout, stderr, code } = await run(this.binary, args, prompt, request.signal);
     if (code !== 0) {
       throw new Error(`claude CLI exited ${code}: ${stderr.slice(0, 500)}`);
     }
@@ -87,15 +87,41 @@ function run(
   binary: string,
   args: string[],
   stdin: string,
+  signal?: AbortSignal,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { stdio: ["pipe", "pipe", "pipe"] });
+    // Decode as UTF-8 so multibyte characters split across chunk boundaries
+    // are not corrupted (string += Buffer would decode each chunk in isolation).
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     let stdout = "";
     let stderr = "";
+    const onAbort = () => child.kill("SIGTERM");
+
+    const cleanup = () => signal?.removeEventListener("abort", onAbort);
     child.stdout.on("data", (chunk) => (stdout += chunk));
     child.stderr.on("data", (chunk) => (stderr += chunk));
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ stdout, stderr, code: code ?? 0 }));
+    child.on("error", (err) => {
+      cleanup();
+      reject(err);
+    });
+    child.on("close", (code) => {
+      cleanup();
+      resolve({ stdout, stderr, code: code ?? 0 });
+    });
+    // stdin can emit EPIPE if the CLI exits before the prompt is fully written;
+    // surface it as a rejection instead of an unhandled stream error.
+    child.stdin.on("error", (err) => {
+      cleanup();
+      reject(err);
+    });
+
+    if (signal) {
+      if (signal.aborted) child.kill("SIGTERM");
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
+
     child.stdin.write(stdin);
     child.stdin.end();
   });

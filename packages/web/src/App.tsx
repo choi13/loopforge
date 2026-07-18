@@ -96,6 +96,18 @@ export default function App() {
     try {
       const evals = await fetchEvals();
       dispatch({ type: "evals_loaded", evals });
+      // The list is light (results omitted). Re-pull the selected eval's full
+      // detail so its results table recovers after a reconnect — otherwise it
+      // stays frozen at whatever the last WS push left it.
+      const selected = selectedEvalIdRef.current;
+      if (selected) {
+        try {
+          const detail = await fetchEval(selected);
+          dispatch({ type: "eval_upsert", eval: detail });
+        } catch {
+          // Keep the list-form summary; WS pushes will fill it in.
+        }
+      }
       setEvalLoadError(null);
     } catch (err) {
       setEvalLoadError(

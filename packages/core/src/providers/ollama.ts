@@ -39,6 +39,7 @@ export class OllamaProvider implements ModelProvider {
     const res = await fetch(`${this.baseUrl}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
+      signal: request.signal,
       body: JSON.stringify({
         model: this.model,
         stream: false,

@@ -27,11 +27,41 @@ function describe(error: unknown): string {
  */
 export function createCodingTools(sandboxRoot: string): Tool[] {
   const root = path.resolve(sandboxRoot);
+  let realRootCache: string | null = null;
 
-  function resolveInside(relativePath: string): string {
+  async function realRootPath(): Promise<string> {
+    if (realRootCache === null) realRootCache = await fs.realpath(root);
+    return realRootCache;
+  }
+
+  async function resolveInside(relativePath: string): Promise<string> {
     const resolved = path.resolve(root, relativePath);
+    // Fast lexical reject.
     if (resolved !== root && !resolved.startsWith(root + path.sep)) {
       throw new Error(`Path escapes the sandbox: ${relativePath}`);
+    }
+    // Defense in depth: resolve symlinks on the nearest existing ancestor and
+    // re-check against the REAL sandbox root, so a symlink inside the sandbox
+    // can't point outside it. (realpath both sides — os.tmpdir() itself is a
+    // symlink on macOS, e.g. /var -> /private/var.)
+    const realRoot = await realRootPath();
+    let probe = resolved;
+    for (;;) {
+      try {
+        const real = await fs.realpath(probe);
+        if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
+          throw new Error(`Path escapes the sandbox (symlink): ${relativePath}`);
+        }
+        break;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          const parent = path.dirname(probe);
+          if (parent === probe) break; // reached filesystem root
+          probe = parent;
+          continue;
+        }
+        throw err;
+      }
     }
     return resolved;
   }
@@ -49,7 +79,7 @@ export function createCodingTools(sandboxRoot: string): Tool[] {
     },
     async execute(input: { path: string }): Promise<ToolResult> {
       try {
-        const content = await fs.readFile(resolveInside(input.path), "utf8");
+        const content = await fs.readFile(await resolveInside(input.path), "utf8");
         return { output: truncate(content, MAX_FILE_CHARS) };
       } catch (error) {
         return { output: `read_file failed: ${describe(error)}`, isError: true };
@@ -71,7 +101,7 @@ export function createCodingTools(sandboxRoot: string): Tool[] {
     },
     async execute(input: { path: string; content: string }): Promise<ToolResult> {
       try {
-        const target = resolveInside(input.path);
+        const target = await resolveInside(input.path);
         await fs.mkdir(path.dirname(target), { recursive: true });
         await fs.writeFile(target, input.content, "utf8");
         return { output: `Wrote ${Buffer.byteLength(input.content)} bytes to ${input.path}` };
@@ -96,11 +126,15 @@ export function createCodingTools(sandboxRoot: string): Tool[] {
     },
     async execute(input: { path?: string }): Promise<ToolResult> {
       try {
-        const start = resolveInside(input.path ?? ".");
+        const start = await resolveInside(input.path ?? ".");
         const found: string[] = [];
         await walk(start, found);
         if (found.length === 0) return { output: "(no files)" };
-        return { output: found.map((f) => path.relative(root, f)).sort().join("\n") };
+        let out = found.map((f) => path.relative(root, f)).sort().join("\n");
+        if (found.length >= MAX_LISTED_FILES) {
+          out += `\n… (listing truncated at ${MAX_LISTED_FILES} files)`;
+        }
+        return { output: out };
       } catch (error) {
         return { output: `list_files failed: ${describe(error)}`, isError: true };
       }
@@ -132,12 +166,13 @@ export function createCodingTools(sandboxRoot: string): Tool[] {
       },
       required: ["command"],
     },
-    async execute(input: { command: string }): Promise<ToolResult> {
+    async execute(input: { command: string }, signal?: AbortSignal): Promise<ToolResult> {
       try {
         const { stdout, stderr } = await execAsync(input.command, {
           cwd: root,
           timeout: 30_000,
           maxBuffer: 1024 * 1024,
+          signal,
         });
         return { output: truncate(formatCommandOutput(stdout, stderr, 0), MAX_OUTPUT_CHARS) };
       } catch (error) {

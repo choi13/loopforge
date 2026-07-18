@@ -17,5 +17,7 @@ export interface ToolResult {
 
 export interface Tool extends ToolDefinition {
   // Input arrives as model-produced JSON; each tool validates what it needs.
-  execute(input: any): Promise<ToolResult>;
+  // The optional signal lets long-running tools (e.g. a shell command) abort
+  // when the run is aborted.
+  execute(input: any, signal?: AbortSignal): Promise<ToolResult>;
 }

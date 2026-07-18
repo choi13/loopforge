@@ -106,10 +106,19 @@ export class RunManager {
 
     // Environments push state snapshots through here; they flow through the
     // normal event path (appended to the log, broadcast as a trace message).
+    // A monotonic seq gives each snapshot a stable identity so the client never
+    // conflates two emitted within the same millisecond.
+    let envSeq = 0;
     const publishState = (state: unknown): void => {
       const record = this.runs.get(runId);
       if (!record) return;
-      this.handleEvent(record, { type: "env_state", runId, state, at: Date.now() });
+      this.handleEvent(record, {
+        type: "env_state",
+        runId,
+        seq: envSeq++,
+        state,
+        at: Date.now(),
+      });
     };
     const env = createEnvironment(environment, publishState, runId);
 

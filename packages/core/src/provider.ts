@@ -12,6 +12,8 @@ export interface ModelRequest {
   system: string;
   messages: ChatMessage[];
   tools: ToolDefinition[];
+  /** Aborts an in-flight completion when the run is aborted. */
+  signal?: AbortSignal;
 }
 
 export interface ModelTurn {

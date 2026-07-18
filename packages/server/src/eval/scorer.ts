@@ -22,10 +22,11 @@ export type RunFinishedEvent = Extract<TraceEvent, { type: "run_finished" }>;
  *
  * - A run that ended "failed" or "aborted" is always a fail (it never got the
  *   chance to succeed), regardless of environment.
- * - coding: PASS iff some run_command tool call completed without error AND its
- *   output contains "All tests passed". We scope to run_command tool outputs so
- *   a `read_file` that merely echoes the `console.log("All tests passed")`
- *   source line in test.js can never masquerade as a passing test run.
+ * - coding: PASS iff some run_command that actually EXECUTES the tests (e.g.
+ *   `node test.js`) completed without error AND printed "All tests passed".
+ *   Correlating with the command matters: the phrase also appears in test.js's
+ *   source, so a `cat test.js` (whose output includes the console.log line and
+ *   an exit code 0) must not masquerade as a passing test run.
  * - sokoban: PASS iff some published env_state reports solved === true.
  */
 export function scoreRun(
@@ -43,13 +44,36 @@ export function scoreRun(
   return scoreSokoban(events);
 }
 
+/** True when a shell command actually runs the test suite (not a cat/echo). */
+function isTestExecution(command: string): boolean {
+  const c = command.toLowerCase();
+  return (
+    (/\bnode\b/.test(c) && /test/.test(c)) ||
+    /\bnpm\b[^\n]*\btest\b/.test(c) ||
+    /\bnpx\b[^\n]*\btest\b/.test(c)
+  );
+}
+
 function scoreCoding(events: TraceEvent[]): RunScore {
+  // Map each run_command invocation to the command string it ran.
+  const commandById = new Map<string, string>();
+  for (const event of events) {
+    if (event.type === "tool_started" && event.name === "run_command") {
+      const command =
+        typeof (event.input as { command?: unknown })?.command === "string"
+          ? (event.input as { command: string }).command
+          : "";
+      commandById.set(event.toolCallId, command);
+    }
+  }
+
   for (const event of events) {
     if (
       event.type === "tool_finished" &&
       event.name === "run_command" &&
       !event.isError &&
-      event.output.includes("All tests passed")
+      event.output.includes("All tests passed") &&
+      isTestExecution(commandById.get(event.toolCallId) ?? "")
     ) {
       return { passed: true, reason: "tests passed" };
     }

@@ -70,8 +70,10 @@ export function eventKey(e: TraceEvent): string {
     case "model_response":
       return `${e.type}:${e.iteration}`;
     case "env_state":
-      // Snapshots repeat throughout a run — keyed by emission time.
-      return `${e.type}:${e.at}`;
+      // Keyed by the server's monotonic seq: a history-fetched snapshot and its
+      // live WS duplicate share a seq (so they collapse), while two distinct
+      // snapshots never collide — even within the same millisecond.
+      return `${e.type}:${e.seq}`;
     default:
       // run_started / run_finished occur once per run
       return e.type;

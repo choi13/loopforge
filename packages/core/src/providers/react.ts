@@ -141,17 +141,23 @@ export function reactActionToTurn(
   return { text: finalText || content, toolCalls: [], usage };
 }
 
-/** Extract a {tool, input} action from possibly-noisy model text. */
+/**
+ * Extract a {tool, input} action from possibly-noisy model text.
+ *
+ * Parses the RAW content (never strip fences first): extractJsonObjects finds
+ * the balanced {...} even when the model wraps it in a ```json fence, and
+ * parsing the raw object preserves string values that legitimately contain
+ * backtick fences (e.g. a write_file `content` with a Markdown code block).
+ */
 export function parseReactAction(content: string): ParsedAction | null {
-  const stripped = stripFences(content);
-  for (const candidate of extractJsonObjects(stripped)) {
+  for (const candidate of extractJsonObjects(content)) {
     try {
       const obj = JSON.parse(candidate);
       if (obj && typeof obj.tool === "string") {
         return {
           tool: obj.tool,
           input: obj.input && typeof obj.input === "object" ? obj.input : {},
-          thought: textBefore(stripped, candidate),
+          thought: textBefore(content, candidate),
         };
       }
     } catch {

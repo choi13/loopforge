@@ -16,18 +16,21 @@ export class AnthropicProvider implements ModelProvider {
   }
 
   async complete(request: ModelRequest): Promise<ModelTurn> {
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: 16000,
-      thinking: { type: "adaptive", display: "summarized" },
-      system: request.system,
-      tools: request.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        input_schema: tool.inputSchema as Anthropic.Tool["input_schema"],
-      })),
-      messages: request.messages.map(toAnthropicMessage),
-    });
+    const response = await this.client.messages.create(
+      {
+        model: this.model,
+        max_tokens: 16000,
+        thinking: { type: "adaptive", display: "summarized" },
+        system: request.system,
+        tools: request.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.inputSchema as Anthropic.Tool["input_schema"],
+        })),
+        messages: request.messages.map(toAnthropicMessage),
+      },
+      { signal: request.signal },
+    );
 
     const turn: ModelTurn = {
       toolCalls: [],

@@ -84,6 +84,9 @@ export type TraceEvent =
        */
       type: "env_state";
       runId: string;
+      /** Monotonic per-run sequence so distinct snapshots never collide, even
+       *  when two are emitted within the same millisecond. */
+      seq: number;
       state: unknown;
       at: number;
     }

@@ -1,7 +1,7 @@
 import "./load-env";
 import http from "node:http";
 import cors from "cors";
-import express from "express";
+import express, { type ErrorRequestHandler } from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { RunManager, type ServerMessage } from "./run-manager";
 import { EvalManager, type EvalMessage } from "./eval-manager";
@@ -25,8 +25,13 @@ wss.on("connection", (socket) => {
 function broadcast(message: ServerMessage | EvalMessage): void {
   const payload = JSON.stringify(message);
   for (const socket of sockets) {
-    if (socket.readyState === WebSocket.OPEN) {
+    if (socket.readyState !== WebSocket.OPEN) continue;
+    // Isolate per-socket failures: one bad/backpressured socket must not abort
+    // the broadcast to the rest or throw up into the event pipeline.
+    try {
       socket.send(payload);
+    } catch {
+      // Drop it; the 'close' handler will evict it from the set.
     }
   }
 }
@@ -190,6 +195,18 @@ app.get("/api/evals/:id", (req, res) => {
   }
   res.json({ eval: summary });
 });
+
+// Keep the JSON error contract even when body-parsing fails: a malformed or
+// non-object JSON body would otherwise return Express's default HTML stack
+// trace (leaking absolute paths). Must be last, and must take 4 args.
+const jsonErrorHandler: ErrorRequestHandler = (err, _req, res, next) => {
+  if (err) {
+    res.status(400).json({ error: "Invalid JSON request body" });
+    return;
+  }
+  next();
+};
+app.use(jsonErrorHandler);
 
 server.listen(PORT, () => {
   console.log(`LoopForge server listening on http://localhost:${PORT}`);

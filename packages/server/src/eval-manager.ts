@@ -202,23 +202,37 @@ export class EvalManager {
     this.broadcast({ type: "eval_updated", eval: record.summary });
 
     return new Promise<void>((resolve) => {
-      this.runManager.createRun(record.summary.provider, task.task, task.environment, {
-        runId: result.runId,
-        // Only the mock provider replays scripts; anthropic uses the real model.
-        mockScriptKey:
-          record.summary.provider === "mock" ? task.mockScriptKey : undefined,
-        onFinished: ({ events, runFinished }) => {
-          result.status = "scored";
-          result.runStatus = runFinished.status;
-          result.iterations = runFinished.iterations;
-          result.usage = { ...runFinished.totalUsage };
-          result.durationMs = runFinished.durationMs;
-          result.score = scoreRun(task.environment, events, runFinished);
-          this.recompute(record);
-          this.broadcast({ type: "eval_updated", eval: record.summary });
-          resolve();
-        },
-      });
+      try {
+        this.runManager.createRun(record.summary.provider, task.task, task.environment, {
+          runId: result.runId,
+          // Only the mock provider replays scripts; real providers use the model.
+          mockScriptKey:
+            record.summary.provider === "mock" ? task.mockScriptKey : undefined,
+          onFinished: ({ events, runFinished }) => {
+            result.status = "scored";
+            result.runStatus = runFinished.status;
+            result.iterations = runFinished.iterations;
+            result.usage = { ...runFinished.totalUsage };
+            result.durationMs = runFinished.durationMs;
+            result.score = scoreRun(task.environment, events, runFinished);
+            this.recompute(record);
+            this.broadcast({ type: "eval_updated", eval: record.summary });
+            resolve();
+          },
+        });
+      } catch (error) {
+        // A synchronous failure starting the run (e.g. seeding the sandbox
+        // threw) must still finalize this slot, or the eval hangs forever.
+        result.status = "scored";
+        result.runStatus = "failed";
+        result.score = {
+          passed: false,
+          reason: `run failed to start: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        this.recompute(record);
+        this.broadcast({ type: "eval_updated", eval: record.summary });
+        resolve();
+      }
     });
   }
 

@@ -91,6 +91,7 @@ export class AgentLoop {
           system: systemPrompt,
           messages,
           tools: toolDefs,
+          signal,
         });
         totalUsage.inputTokens += turn.usage.inputTokens;
         totalUsage.outputTokens += turn.usage.outputTokens;
@@ -156,7 +157,7 @@ export class AgentLoop {
             isError = true;
           } else {
             try {
-              const result = await tool.execute(call.input);
+              const result = await tool.execute(call.input, signal);
               output = result.output;
               isError = result.isError ?? false;
             } catch (error) {
@@ -164,6 +165,10 @@ export class AgentLoop {
               isError = true;
             }
           }
+
+          // An empty result would become an empty tool_result content block,
+          // which some providers (the Claude API) reject on the next request.
+          if (output.length === 0) output = "(no output)";
 
           onEvent({
             type: "tool_finished",
