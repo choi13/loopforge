@@ -44,6 +44,8 @@ export interface EvalSummary {
   suiteId: string;
   suiteName: string;
   provider: "mock" | "anthropic" | "ollama" | "claude-cli";
+  /** Per-provider model override, or null when using the provider default. */
+  model: string | null;
   repeats: number;
   status: "running" | "completed";
   createdAt: number;
@@ -64,6 +66,8 @@ export interface CreateEvalParams {
   suiteId: string;
   provider: "mock" | "anthropic" | "ollama" | "claude-cli";
   repeats: number;
+  /** Optional model override, forwarded to every run the eval creates. */
+  model?: string;
 }
 
 /** Max runs executing at once across an eval batch. */
@@ -133,6 +137,7 @@ export class EvalManager {
       suiteId: suite.id,
       suiteName: suite.name,
       provider: params.provider,
+      model: params.model ?? null,
       repeats: params.repeats,
       status: "running",
       createdAt: Date.now(),
@@ -208,6 +213,9 @@ export class EvalManager {
           // Only the mock provider replays scripts; real providers use the model.
           mockScriptKey:
             record.summary.provider === "mock" ? task.mockScriptKey : undefined,
+          // The eval-wide model override rides along on every run it creates
+          // (RunManager ignores it for the mock provider).
+          model: record.summary.model ?? undefined,
           onFinished: ({ events, runFinished }) => {
             result.status = "scored";
             result.runStatus = runFinished.status;

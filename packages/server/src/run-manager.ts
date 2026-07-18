@@ -60,6 +60,11 @@ export interface CreateRunOptions {
   runId?: string;
   /** For mock runs: play this specific script instead of the env default. */
   mockScriptKey?: ScriptKey;
+  /**
+   * Per-provider model override for ollama / claude-cli / anthropic; when
+   * absent the provider's constructor default applies. Ignored for mock.
+   */
+  model?: string;
   /** Invoked once when the run finishes, with its recorded events. */
   onFinished?: (notice: RunFinishedNotice) => void;
 }
@@ -136,13 +141,15 @@ export class RunManager {
     } else {
       // Real model providers. Ollama runs a local model (no API key / cost);
       // claude-cli drives the local Claude Code CLI on its logged-in account
-      // (no API key); Anthropic calls the Claude API directly.
+      // (no API key); Anthropic calls the Claude API directly. Each takes the
+      // model as its first constructor argument — an undefined override lets
+      // the constructor default apply.
       modelProvider =
         provider === "ollama"
-          ? new OllamaProvider()
+          ? new OllamaProvider(options.model)
           : provider === "claude-cli"
-            ? new ClaudeCliProvider()
-            : new AnthropicProvider();
+            ? new ClaudeCliProvider(options.model)
+            : new AnthropicProvider(options.model);
       // Runs may omit the task (e.g. sokoban); fall back to the demo task.
       if (!effectiveTask) effectiveTask = env.demoTask;
     }

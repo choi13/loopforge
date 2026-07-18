@@ -28,6 +28,7 @@ function EvalHeader({ ev }: { ev: EvalSummary }) {
 
       <div className="eval-head-meta">
         <span className="provider-badge">{ev.provider}</span>
+        {ev.model !== null && <span className="mono">{ev.model}</span>}
         <span className="mono">
           {ev.repeats} {ev.repeats === 1 ? "repeat" : "repeats"}
         </span>
@@ -221,11 +222,17 @@ function ResultsTable({
 
 interface LeaderRow {
   provider: string;
+  /** Model override the eval ran with, or null for the provider default. */
+  model: string | null;
   passRate: number;
   meanTokensIn: number;
   meanTokensOut: number;
   scored: number;
 }
+
+/** Stable identity for a (provider, model) leaderboard entry. */
+const leaderKey = (provider: string, model: string | null): string =>
+  `${provider}\u0000${model ?? ""}`;
 
 function Leaderboard({
   suiteId,
@@ -235,16 +242,18 @@ function Leaderboard({
   allEvals: EvalSummary[];
 }) {
   const rows = useMemo<LeaderRow[]>(() => {
-    // Latest eval per provider for this suite (ascending createdAt → last wins).
-    const byProvider = new Map<string, EvalSummary>();
+    // Latest eval per (provider, model) pair for this suite
+    // (ascending createdAt → last wins).
+    const byKey = new Map<string, EvalSummary>();
     for (const e of allEvals
       .filter((e) => e.suiteId === suiteId)
       .sort((a, b) => a.createdAt - b.createdAt)) {
-      byProvider.set(e.provider, e);
+      byKey.set(leaderKey(e.provider, e.model), e);
     }
-    return [...byProvider.values()]
+    return [...byKey.values()]
       .map((e) => ({
         provider: e.provider,
+        model: e.model,
         passRate: e.aggregate.passRate,
         meanTokensIn: e.aggregate.meanTokensIn,
         meanTokensOut: e.aggregate.meanTokensOut,
@@ -253,7 +262,7 @@ function Leaderboard({
       .sort((a, b) => b.passRate - a.passRate);
   }, [suiteId, allEvals]);
 
-  // Only meaningful across multiple providers.
+  // Only meaningful across multiple (provider, model) entries.
   if (rows.length < 2) return null;
 
   return (
@@ -271,10 +280,13 @@ function Leaderboard({
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={row.provider}>
+              <tr key={leaderKey(row.provider, row.model)}>
                 <td className="mono col-num col-rank">{i + 1}</td>
                 <td>
                   <span className="provider-badge">{row.provider}</span>
+                  {row.model !== null && (
+                    <span className="mono leader-model"> · {row.model}</span>
+                  )}
                 </td>
                 <td className="mono col-num">
                   {row.scored > 0 ? `${Math.round(row.passRate * 100)}%` : "—"}

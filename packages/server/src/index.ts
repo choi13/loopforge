@@ -39,6 +39,23 @@ function broadcast(message: ServerMessage | EvalMessage): void {
 const runManager = new RunManager(broadcast);
 const evalManager = new EvalManager(runManager, broadcast);
 
+/**
+ * Parse the optional per-provider "model" override shared by POST /api/runs
+ * and POST /api/evals: must be a string when present, trimmed, treated as
+ * absent when empty, and capped at 120 characters.
+ */
+function parseModel(
+  raw: unknown,
+): { ok: true; model: string | undefined } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, model: undefined };
+  if (typeof raw !== "string") return { ok: false, error: "model must be a string" };
+  const trimmed = raw.trim();
+  if (trimmed.length > 120) {
+    return { ok: false, error: "model must be at most 120 characters" };
+  }
+  return { ok: true, model: trimmed || undefined };
+}
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
@@ -94,6 +111,16 @@ app.post("/api/runs", (req, res) => {
       : undefined;
   const task = typeof rawTask === "string" ? rawTask.trim() : "";
 
+  const rawModel =
+    typeof body === "object" && body !== null
+      ? (body as { model?: unknown }).model
+      : undefined;
+  const parsedModel = parseModel(rawModel);
+  if (!parsedModel.ok) {
+    res.status(400).json({ error: parsedModel.error });
+    return;
+  }
+
   if (provider === "anthropic") {
     // Sokoban has a built-in default task; coding tasks are free-form and required.
     if (!task && environment === "coding") {
@@ -106,8 +133,11 @@ app.post("/api/runs", (req, res) => {
     }
   }
 
-  // For "mock", RunManager ignores the task and forces the environment's demo task.
-  const run = runManager.createRun(provider, task, environment);
+  // For "mock", RunManager ignores the task and forces the environment's demo
+  // task; it also ignores the model override, which only real providers use.
+  const run = runManager.createRun(provider, task, environment, {
+    model: parsedModel.model,
+  });
   res.status(201).json({ run });
 });
 
@@ -174,12 +204,18 @@ app.post("/api/evals", (req, res) => {
     repeats = rawRepeats;
   }
 
+  const parsedModel = parseModel(get("model"));
+  if (!parsedModel.ok) {
+    res.status(400).json({ error: parsedModel.error });
+    return;
+  }
+
   if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
     res.status(400).json({ error: "ANTHROPIC_API_KEY is not set on the server" });
     return;
   }
 
-  const summary = evalManager.create({ suiteId, provider, repeats });
+  const summary = evalManager.create({ suiteId, provider, repeats, model: parsedModel.model });
   res.status(201).json({ eval: summary });
 });
 

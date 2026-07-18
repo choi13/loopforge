@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import type { Provider, Suite } from "../types";
+import { MODEL_PLACEHOLDERS } from "./NewRunForm";
 
 interface Props {
   suites: Suite[];
@@ -8,6 +9,7 @@ interface Props {
     suiteId: string;
     provider: Provider;
     repeats: number;
+    model?: string;
   }) => Promise<void>;
 }
 
@@ -25,6 +27,7 @@ export function NewEvalForm({ suites, onCreate }: Props) {
 
   const [suiteId, setSuiteId] = useState(defaultSuite);
   const [provider, setProvider] = useState<Provider>("mock");
+  const [model, setModel] = useState("");
   const [repeats, setRepeats] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +45,8 @@ export function NewEvalForm({ suites, onCreate }: Props) {
 
   const handleProvider = (e: ChangeEvent<HTMLSelectElement>) => {
     setProvider(e.target.value as Provider);
+    // Model names are provider-specific; reset to "use the provider default".
+    setModel("");
     setError(null);
   };
 
@@ -58,7 +63,16 @@ export function NewEvalForm({ suites, onCreate }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await onCreate({ suiteId: validSuiteId, provider, repeats });
+      const trimmedModel = model.trim();
+      await onCreate({
+        suiteId: validSuiteId,
+        provider,
+        repeats,
+        // "model" travels only when a non-empty override was typed.
+        ...(provider !== "mock" && trimmedModel.length > 0
+          ? { model: trimmedModel }
+          : {}),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start eval");
     } finally {
@@ -101,6 +115,27 @@ export function NewEvalForm({ suites, onCreate }: Props) {
         <option value="claude-cli">Claude CLI (local account)</option>
         <option value="anthropic">Anthropic (live API)</option>
       </select>
+
+      {provider !== "mock" && (
+        <>
+          <label className="field-label" htmlFor="new-eval-model">
+            Model <span className="field-hint">optional</span>
+          </label>
+          <input
+            id="new-eval-model"
+            className="select input-text"
+            type="text"
+            value={model}
+            onChange={(e) => {
+              setModel(e.target.value);
+              setError(null);
+            }}
+            placeholder={MODEL_PLACEHOLDERS[provider]}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </>
+      )}
 
       <label className="field-label" htmlFor="new-eval-repeats">
         Repeats <span className="field-hint">per task, 1–5</span>

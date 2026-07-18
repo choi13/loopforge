@@ -29,6 +29,23 @@ export interface RunSummary {
 }
 
 /**
+ * Payload of `env_state` events for coding runs: the cumulative latest
+ * file-diff snapshot. One entry per file ever written in the run; `before` is
+ * the content prior to the FIRST write of the run (null when the file did not
+ * exist) and `after` is the most recently written content.
+ */
+export interface CodingFileChange {
+  path: string;
+  before: string | null;
+  after: string;
+}
+
+export interface CodingFilesState {
+  kind: "coding_files";
+  changes: CodingFileChange[];
+}
+
+/**
  * Payload of `env_state` events for sokoban runs. Coordinates are
  * [x, y] pairs — x = column from the left, y = row from the top, 0-based.
  */
@@ -102,6 +119,8 @@ export interface EvalSummary {
   suiteId: string;
   suiteName: string;
   provider: Provider;
+  /** Per-provider model override, or null when the provider default was used. */
+  model: string | null;
   repeats: number;
   status: "running" | "completed";
   createdAt: number;

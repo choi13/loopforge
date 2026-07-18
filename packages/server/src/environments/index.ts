@@ -40,7 +40,7 @@ export function createEnvironment(
 ): RunEnvironment {
   switch (name) {
     case "coding":
-      return createCodingEnvironment(runId);
+      return createCodingEnvironment(runId, publishState);
     case "sokoban":
       return createSokobanEnvironment(publishState);
   }

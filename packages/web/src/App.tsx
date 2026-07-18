@@ -18,6 +18,7 @@ import {
 } from "./api";
 import { initialState, reducer } from "./state";
 import { latestSokobanState } from "./sokoban";
+import { latestCodingFilesState } from "./codingFiles";
 import { useWebSocket } from "./useWebSocket";
 import type {
   Environment,
@@ -30,6 +31,7 @@ import { Header } from "./components/Header";
 import { NewRunForm } from "./components/NewRunForm";
 import { RunList } from "./components/RunList";
 import { SokobanBoard } from "./components/SokobanBoard";
+import { FileChangesPanel } from "./components/FileChangesPanel";
 import { Timeline } from "./components/Timeline";
 import { EmptyState } from "./components/EmptyState";
 import { NewEvalForm } from "./components/NewEvalForm";
@@ -193,17 +195,26 @@ export default function App() {
   }, [connected, sync, syncEvals]);
 
   const startRun = useCallback(
-    async (provider: Provider, environment: Environment, task: string) => {
+    async (
+      provider: Provider,
+      environment: Environment,
+      task: string,
+      model: string
+    ) => {
       justStartedRef.current = true;
       try {
         const body: {
           provider: Provider;
           environment: Environment;
           task?: string;
+          model?: string;
         } = { provider, environment };
         // Mock runs are fully scripted; an empty anthropic+sokoban task lets
         // the server substitute the standard demo task.
         if (provider !== "mock" && task.length > 0) body.task = task;
+        // "model" travels only when a non-empty override was typed; empty
+        // means "use the provider default".
+        if (provider !== "mock" && model.length > 0) body.model = model;
         const run = await createRun(body);
         justStartedRef.current = false;
         dispatch({ type: "run_created", run, select: true });
@@ -216,7 +227,12 @@ export default function App() {
   );
 
   const startEval = useCallback(
-    async (body: { suiteId: string; provider: Provider; repeats: number }) => {
+    async (body: {
+      suiteId: string;
+      provider: Provider;
+      repeats: number;
+      model?: string;
+    }) => {
       justStartedEvalRef.current = true;
       try {
         const summary = await createEval(body);
@@ -284,6 +300,20 @@ export default function App() {
     () => (isSokoban ? latestSokobanState(state.events) : null),
     [isSokoban, state.events]
   );
+  const isCoding = selectedRun?.environment === "coding";
+  const filesState = useMemo(
+    () => (isCoding ? latestCodingFilesState(state.events) : null),
+    [isCoding, state.events]
+  );
+
+  // What occupies the sticky side column: sokoban always shows its board
+  // (with a "waiting" placeholder); coding runs show the file-changes panel
+  // only once the first coding_files snapshot has arrived.
+  const sidePanel = isSokoban ? (
+    <SokobanBoard state={boardState} />
+  ) : filesState ? (
+    <FileChangesPanel state={filesState} />
+  ) : null;
 
   const sortedEvals = useMemo(
     () => Object.values(state.evals).sort((a, b) => b.createdAt - a.createdAt),
@@ -317,7 +347,7 @@ export default function App() {
       ) : state.runs.length === 0 ? (
         <EmptyState />
       ) : selectedRun ? (
-        isSokoban ? (
+        sidePanel ? (
           <div className="arena-layout">
             <div className="arena-timeline">
               <Timeline
@@ -327,8 +357,10 @@ export default function App() {
                 error={state.historyError}
               />
             </div>
-            <aside className="arena-board">
-              <SokobanBoard state={boardState} />
+            <aside
+              className={"arena-board" + (isSokoban ? "" : " arena-files")}
+            >
+              {sidePanel}
             </aside>
           </div>
         ) : (

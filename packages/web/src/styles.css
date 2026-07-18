@@ -1034,6 +1034,21 @@ button {
   top: 24px;
 }
 
+/* Wider side column for coding runs: diffs need more room than the board. */
+.arena-board.arena-files {
+  flex-basis: 420px;
+  width: 420px;
+}
+
+@media (min-width: 1101px) {
+  /* Sticky column: cap to the viewport (52px header + 24px offset + margin)
+     and scroll internally so long diff lists stay reachable. */
+  .arena-board.arena-files {
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+  }
+}
+
 @media (max-width: 1100px) {
   .arena-layout {
     flex-direction: column-reverse;
@@ -1045,10 +1060,12 @@ button {
     padding-bottom: 0;
   }
 
-  .arena-board {
+  .arena-board,
+  .arena-board.arena-files {
     position: static;
     flex: 0 0 auto;
     width: 100%;
+    max-height: none;
   }
 }
 
@@ -1709,4 +1726,157 @@ button {
   background-image: none;
   cursor: text;
   font-family: var(--font-mono);
+}
+
+.input-text {
+  appearance: auto;
+  background-image: none;
+  cursor: text;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.input-text::placeholder {
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+/* ---------- leaderboard: model suffix ---------- */
+
+.leader-model {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* ============================================================
+   File-changes panel (coding runs)
+   Same layout slot as the Sokoban board: one card per written
+   file, each a collapsed unified diff of before -> after.
+   ============================================================ */
+
+.fc-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.fc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.fc-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.fc-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.fc-card {
+  background: var(--panel-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.fc-card + .fc-card {
+  margin-top: 10px;
+}
+
+.fc-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.fc-path {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.fc-new-badge {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--c-completed);
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.fc-diff {
+  margin: 0;
+  padding: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  max-height: 340px;
+  overflow: auto;
+}
+
+/* min-width:100% + max-content keeps row tints full-width under x-scroll */
+.fc-line {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  padding: 0 12px;
+  white-space: pre;
+  color: var(--text);
+}
+
+.fc-line.fc-ctx {
+  color: var(--text-dim);
+}
+
+.fc-line.fc-add {
+  color: #bbf7d0;
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.fc-line.fc-del {
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.fc-sign {
+  display: inline-block;
+  width: 14px;
+  user-select: none;
+}
+
+.fc-skip {
+  display: block;
+  margin: 3px 0;
+  padding: 2px 12px;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+  color: var(--text-dim);
+  opacity: 0.75;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  user-select: none;
 }

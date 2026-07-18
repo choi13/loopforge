@@ -41,6 +41,8 @@ export async function createRun(body: {
   provider: Provider;
   environment: Environment;
   task?: string;
+  /** Optional per-provider model override; omit to use the provider default. */
+  model?: string;
 }): Promise<RunSummary> {
   const data = await request<{ run: RunSummary }>("/api/runs", {
     method: "POST",
@@ -64,7 +66,7 @@ export async function abortRun(id: string): Promise<void> {
  * present array everywhere.
  */
 function normalizeEval(e: EvalSummary): EvalSummary {
-  return { ...e, results: e.results ?? [] };
+  return { ...e, results: e.results ?? [], model: e.model ?? null };
 }
 
 export async function fetchSuites(): Promise<Suite[]> {
@@ -88,6 +90,8 @@ export async function createEval(body: {
   suiteId: string;
   provider: Provider;
   repeats: number;
+  /** Optional per-provider model override; omit to use the provider default. */
+  model?: string;
 }): Promise<EvalSummary> {
   const data = await request<{ eval: EvalSummary }>("/api/evals", {
     method: "POST",

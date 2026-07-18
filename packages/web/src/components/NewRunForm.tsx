@@ -6,7 +6,8 @@ interface Props {
   onStart: (
     provider: Provider,
     environment: Environment,
-    task: string
+    task: string,
+    model: string
   ) => Promise<void>;
 }
 
@@ -15,10 +16,18 @@ const MOCK_PLACEHOLDERS: Record<Environment, string> = {
   sokoban: "Demo: agent solves a Sokoban level (scripted, no API key needed)",
 };
 
+/** Placeholder = each provider's default model (used when the field is empty). */
+export const MODEL_PLACEHOLDERS: Record<Exclude<Provider, "mock">, string> = {
+  ollama: "llama3:latest (default)",
+  "claude-cli": "sonnet (default)",
+  anthropic: "claude-opus-4-8 (default)",
+};
+
 export function NewRunForm({ onStart }: Props) {
   const [environment, setEnvironment] = useState<Environment>("coding");
   const [provider, setProvider] = useState<Provider>("mock");
   const [task, setTask] = useState("");
+  const [model, setModel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +52,9 @@ export function NewRunForm({ onStart }: Props) {
 
   const handleProvider = (e: ChangeEvent<HTMLSelectElement>) => {
     setProvider(e.target.value as Provider);
+    // Model names are provider-specific; a stale override would 404/400 on the
+    // next provider, so reset to "use the provider default".
+    setModel("");
     setError(null);
   };
 
@@ -52,7 +64,7 @@ export function NewRunForm({ onStart }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await onStart(provider, environment, task.trim());
+      await onStart(provider, environment, task.trim(), model.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start run");
     } finally {
@@ -91,6 +103,27 @@ export function NewRunForm({ onStart }: Props) {
         <option value="claude-cli">Claude CLI (local account)</option>
         <option value="anthropic">Anthropic (live API)</option>
       </select>
+
+      {provider !== "mock" && (
+        <>
+          <label className="field-label" htmlFor="new-run-model">
+            Model <span className="field-hint">optional</span>
+          </label>
+          <input
+            id="new-run-model"
+            className="select input-text"
+            type="text"
+            value={model}
+            onChange={(e) => {
+              setModel(e.target.value);
+              setError(null);
+            }}
+            placeholder={MODEL_PLACEHOLDERS[provider]}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </>
+      )}
 
       <label className="field-label" htmlFor="new-run-task">
         Task
