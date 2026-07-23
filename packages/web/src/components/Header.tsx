@@ -1,4 +1,4 @@
-import type { RunSummary, View } from "../types";
+import type { IsolationLevel, RunSummary, View } from "../types";
 import { fmtTokens, statusLabel } from "../format";
 import { LogoMark } from "./LogoMark";
 
@@ -7,10 +7,18 @@ interface Props {
   onViewChange: (view: View) => void;
   run?: RunSummary;
   connected: boolean;
+  isolationLevel: IsolationLevel;
   onAbort: () => void;
 }
 
-export function Header({ view, onViewChange, run, connected, onAbort }: Props) {
+export function Header({
+  view,
+  onViewChange,
+  run,
+  connected,
+  isolationLevel,
+  onAbort,
+}: Props) {
   const showRun = view === "runs" && run;
   return (
     <header className="header">
@@ -37,6 +45,12 @@ export function Header({ view, onViewChange, run, connected, onAbort }: Props) {
       </div>
 
       <div className="header-right">
+        <span
+          className={`isolation-pill isolation-${isolationLevel}`}
+          title="Command execution isolation level reported by the local server"
+        >
+          isolation: {isolationLevel}
+        </span>
         {showRun && (
           <>
             <span className={`status-pill status-${run.status}`}>

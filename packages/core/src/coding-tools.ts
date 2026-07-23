@@ -1,10 +1,10 @@
-import { exec } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
+import {
+  LocalProcessExecutor,
+  type CommandExecutor,
+} from "./command-executor";
 import type { Tool, ToolResult } from "./tools";
-
-const execAsync = promisify(exec);
 
 const MAX_OUTPUT_CHARS = 10_000;
 const MAX_FILE_CHARS = 50_000;
@@ -25,8 +25,16 @@ function describe(error: unknown): string {
  * The coding environment: four tools rooted in a sandbox directory. Paths are
  * resolved and confined to the sandbox; commands run with a timeout.
  */
-export function createCodingTools(sandboxRoot: string): Tool[] {
+export interface CodingToolOptions {
+  commandExecutor?: CommandExecutor;
+}
+
+export function createCodingTools(
+  sandboxRoot: string,
+  options: CodingToolOptions = {},
+): Tool[] {
   const root = path.resolve(sandboxRoot);
+  const commandExecutor = options.commandExecutor ?? new LocalProcessExecutor();
   let realRootCache: string | null = null;
 
   async function realRootPath(): Promise<string> {
@@ -167,27 +175,22 @@ export function createCodingTools(sandboxRoot: string): Tool[] {
       required: ["command"],
     },
     async execute(input: { command: string }, signal?: AbortSignal): Promise<ToolResult> {
-      try {
-        const { stdout, stderr } = await execAsync(input.command, {
-          cwd: root,
-          timeout: 30_000,
-          maxBuffer: 1024 * 1024,
-          signal,
-        });
-        return { output: truncate(formatCommandOutput(stdout, stderr, 0), MAX_OUTPUT_CHARS) };
-      } catch (error) {
-        const failure = error as {
-          stdout?: string;
-          stderr?: string;
-          code?: number;
-          killed?: boolean;
-          message?: string;
-        };
-        const exitCode = typeof failure.code === "number" ? failure.code : 1;
-        const body = formatCommandOutput(failure.stdout ?? "", failure.stderr ?? "", exitCode);
-        const note = failure.killed ? "\n(command timed out after 30s)" : "";
-        return { output: truncate(body + note, MAX_OUTPUT_CHARS), isError: true };
-      }
+      const result = await commandExecutor.execute(input.command, {
+        cwd: root,
+        timeoutMs: 30_000,
+        maxBufferBytes: 1024 * 1024,
+        signal,
+      });
+      const body = formatCommandOutput(
+        result.stdout,
+        result.stderr,
+        result.exitCode,
+      );
+      const note = result.timedOut ? "\n(command timed out after 30s)" : "";
+      return {
+        output: truncate(body + note, MAX_OUTPUT_CHARS),
+        isError: result.exitCode !== 0,
+      };
     },
   };
 

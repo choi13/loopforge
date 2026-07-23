@@ -1,4 +1,9 @@
-import type { RunStatus, TokenUsage, TraceEvent } from "./events";
+import type {
+  FailureCode,
+  RunStatus,
+  TokenUsage,
+  TraceEvent,
+} from "./events";
 import type { ChatMessage, ContentBlock } from "./messages";
 import type { ModelProvider } from "./provider";
 import type { Tool } from "./tools";
@@ -22,6 +27,7 @@ export interface RunResult {
   status: Exclude<RunStatus, "running">;
   finalText?: string;
   error?: string;
+  failureCode?: FailureCode;
   iterations: number;
   totalUsage: TokenUsage;
 }
@@ -48,7 +54,7 @@ export class AgentLoop {
 
     const finish = (
       status: RunResult["status"],
-      extra: { finalText?: string; error?: string } = {},
+      extra: { finalText?: string; error?: string; failureCode?: FailureCode } = {},
     ): RunResult => {
       onEvent({
         type: "run_finished",
@@ -56,6 +62,7 @@ export class AgentLoop {
         status,
         finalText: extra.finalText,
         error: extra.error,
+        failureCode: extra.failureCode,
         iterations: iteration,
         totalUsage,
         durationMs: Date.now() - startedAt,
@@ -76,7 +83,9 @@ export class AgentLoop {
     try {
       while (iteration < maxIterations) {
         iteration += 1;
-        if (signal?.aborted) return finish("aborted");
+        if (signal?.aborted) {
+          return finish("aborted", { failureCode: "ABORTED" });
+        }
 
         onEvent({ type: "iteration_started", runId, iteration, at: Date.now() });
         onEvent({
@@ -136,7 +145,9 @@ export class AgentLoop {
 
         const results: ContentBlock[] = [];
         for (const call of turn.toolCalls) {
-          if (signal?.aborted) return finish("aborted");
+          if (signal?.aborted) {
+            return finish("aborted", { failureCode: "ABORTED" });
+          }
 
           onEvent({
             type: "tool_started",
@@ -192,10 +203,19 @@ export class AgentLoop {
         messages.push({ role: "user", content: results });
       }
 
-      return finish("max_iterations");
+      return finish("max_iterations", {
+        failureCode: "MAX_ITERATION_REACHED",
+      });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const failureCode: FailureCode = /timeout|timed out/i.test(message)
+        ? "TIMEOUT"
+        : /rate.?limit|unavailable|connection|fetch failed/i.test(message)
+          ? "PROVIDER_UNAVAILABLE"
+          : "MODEL_INVALID_OUTPUT";
       return finish("failed", {
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
+        failureCode,
       });
     }
   }

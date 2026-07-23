@@ -12,6 +12,7 @@ import {
   createRun,
   fetchEval,
   fetchEvals,
+  fetchHealth,
   fetchRun,
   fetchRuns,
   fetchSuites,
@@ -27,6 +28,7 @@ import type {
   ServerMessage,
   Suite,
   View,
+  IsolationLevel,
 } from "./types";
 import { Header } from "./components/Header";
 import { NewRunForm } from "./components/NewRunForm";
@@ -44,6 +46,8 @@ export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [evalLoadError, setEvalLoadError] = useState<string | null>(null);
+  const [isolationLevel, setIsolationLevel] =
+    useState<IsolationLevel>("unknown");
 
   /** Top-level Runs | Evals view. */
   const [view, setView] = useState<View>("runs");
@@ -134,6 +138,9 @@ export default function App() {
   useEffect(() => {
     void sync();
     void syncEvals();
+    void fetchHealth()
+      .then((health) => setIsolationLevel(health.isolationLevel))
+      .catch(() => setIsolationLevel("unknown"));
   }, [sync, syncEvals]);
 
   // Suites rarely change; fetch once. Failure just leaves the demo fallback.
@@ -439,6 +446,7 @@ export default function App() {
         onViewChange={changeView}
         run={selectedRun}
         connected={connected}
+        isolationLevel={isolationLevel}
         onAbort={handleAbort}
       />
       <div className="app-body">

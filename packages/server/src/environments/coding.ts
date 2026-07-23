@@ -1,8 +1,17 @@
 import { promises as fsp, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createCodingTools, type Tool, type ToolResult } from "@loopforge/core";
+import {
+  createCodingTools,
+  DockerCommandExecutor,
+  LocalProcessExecutor,
+  RestrictedCommandExecutor,
+  type CommandExecutor,
+  type Tool,
+  type ToolResult,
+} from "@loopforge/core";
 import { DEMO_TASK, buildDemoScript, resetDemoSandbox } from "../demo";
+import { getCommandExecutorMode } from "../local-boundary";
 import type { PublishState, RunEnvironment } from "./index";
 
 /**
@@ -36,6 +45,13 @@ interface FileChange {
 
 /** Max chars kept per before/after snapshot; longer content is cut. */
 const SNAPSHOT_MAX_CHARS = 50_000;
+
+function commandExecutorFromEnvironment(): CommandExecutor {
+  const mode = getCommandExecutorMode();
+  if (mode === "docker") return new DockerCommandExecutor();
+  if (mode === "restricted") return new RestrictedCommandExecutor();
+  return new LocalProcessExecutor();
+}
 
 function truncateSnapshot(text: string): string {
   return text.length > SNAPSHOT_MAX_CHARS
@@ -123,7 +139,9 @@ export function createCodingEnvironment(
   // from the broken sources in an isolated directory.
   resetDemoSandbox(sandboxDir);
 
-  const tools = createCodingTools(sandboxDir).map((tool) =>
+  const tools = createCodingTools(sandboxDir, {
+    commandExecutor: commandExecutorFromEnvironment(),
+  }).map((tool) =>
     tool.name === "write_file" ? withDiffSnapshots(tool, sandboxDir, publishState) : tool,
   );
 

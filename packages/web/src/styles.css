@@ -177,6 +177,27 @@ button {
   background: var(--border);
 }
 
+.isolation-pill {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.isolation-pill.isolation-local-process {
+  color: var(--c-warn);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.isolation-pill.isolation-restricted-command,
+.isolation-pill.isolation-docker {
+  color: var(--c-completed);
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
 .header-tokens {
   display: inline-flex;
   align-items: baseline;
