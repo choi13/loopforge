@@ -3,9 +3,18 @@ import type {
   EvalSummary,
   Provider,
   RunSummary,
+  IsolationLevel,
   Suite,
   TraceEvent,
 } from "./types";
+
+export async function fetchHealth(): Promise<{
+  ok: boolean;
+  bindHost: string;
+  isolationLevel: Exclude<IsolationLevel, "unknown">;
+}> {
+  return request("/api/health");
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);

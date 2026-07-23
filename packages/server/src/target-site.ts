@@ -1,4 +1,5 @@
 import http from "node:http";
+import { LOCAL_BIND_HOST } from "./local-boundary";
 
 /**
  * LoopMart — the seeded QA target for the browser environment. A tiny,
@@ -102,7 +103,10 @@ function sendHtml(res: http.ServerResponse, status: number, html: string): void 
  * the http.Server so callers (and tests, which pass port 0) can await its
  * "listening" event, read the bound address, and close it.
  */
-export function startTargetSite(port = 8788): http.Server {
+export function startTargetSite(
+  port = 8788,
+  host = LOCAL_BIND_HOST,
+): http.Server {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const { pathname } = url;
@@ -128,6 +132,6 @@ export function startTargetSite(port = 8788): http.Server {
     sendHtml(res, 404, NOT_FOUND_PAGE);
   });
 
-  server.listen(port);
+  server.listen(port, host);
   return server;
 }

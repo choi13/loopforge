@@ -24,6 +24,19 @@ export type RunStatus =
   | "aborted"
   | "max_iterations";
 
+export type FailureCode =
+  | "MODEL_INVALID_OUTPUT"
+  | "TOOL_SCHEMA_ERROR"
+  | "TOOL_EXECUTION_FAILED"
+  | "TIMEOUT"
+  | "MAX_ITERATION_REACHED"
+  | "ENVIRONMENT_ERROR"
+  | "WRONG_SOLUTION"
+  | "TEST_REGRESSION"
+  | "POLICY_VIOLATION"
+  | "PROVIDER_UNAVAILABLE"
+  | "ABORTED";
+
 export type TraceEvent =
   | {
       type: "run_started";
@@ -96,6 +109,7 @@ export type TraceEvent =
       status: Exclude<RunStatus, "running">;
       finalText?: string;
       error?: string;
+      failureCode?: FailureCode;
       iterations: number;
       totalUsage: TokenUsage;
       durationMs: number;

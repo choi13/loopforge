@@ -5,6 +5,8 @@ import {
   ClaudeCliProvider,
   MockProvider,
   OllamaProvider,
+  redactText,
+  redactTraceEvent,
   type ModelProvider,
   type RunStatus,
   type TokenUsage,
@@ -77,6 +79,10 @@ interface RunRecord {
   onFinished?: (notice: RunFinishedNotice) => void;
   /** Guards onFinished so it fires exactly once. */
   notified: boolean;
+}
+
+export function sanitizeRunTask(task: string): string {
+  return redactText(task);
 }
 
 /**
@@ -157,9 +163,9 @@ export class RunManager {
     const controller = new AbortController();
     const summary: RunSummary = {
       id: runId,
-      task: effectiveTask,
+      task: sanitizeRunTask(effectiveTask),
       provider: modelProvider.name,
-      model: modelProvider.model,
+      model: redactText(modelProvider.model),
       environment,
       status: "running",
       createdAt: Date.now(),
@@ -192,21 +198,26 @@ export class RunManager {
     loop.run(runId, effectiveTask, controller.signal).catch((error: unknown) => {
       summary.status = "failed";
       this.broadcast({ type: "run_updated", run: summary });
-      console.error(`run ${runId} crashed:`, error);
+      const safeError = redactText(
+        error instanceof Error ? error.message : String(error),
+      );
+      console.error(`run ${runId} crashed:`, safeError);
       // The loop normally emits run_finished (which triggers cleanup); this
       // path covers a throw outside that flow so the temp sandbox still goes
       // and any eval waiting on this run is still notified (once).
       this.cleanup(record);
-      this.notifyFinished(record, {
+      const crashEvent = redactTraceEvent({
         type: "run_finished",
         runId,
         status: "failed",
         error: error instanceof Error ? error.message : String(error),
+        failureCode: "ENVIRONMENT_ERROR",
         iterations: summary.iterations,
         totalUsage: summary.usage,
         durationMs: Date.now() - summary.createdAt,
         at: Date.now(),
       });
+      this.notifyFinished(record, crashEvent);
     });
 
     return summary;
@@ -220,41 +231,42 @@ export class RunManager {
   }
 
   private handleEvent(record: RunRecord, event: TraceEvent): void {
-    record.events.push(event);
+    const recordedEvent = redactTraceEvent(event);
+    record.events.push(recordedEvent);
     const { summary } = record;
 
     let summaryChanged = false;
-    if (event.type === "iteration_started") {
-      summary.iterations = event.iteration;
+    if (recordedEvent.type === "iteration_started") {
+      summary.iterations = recordedEvent.iteration;
       summaryChanged = true;
-    } else if (event.type === "model_response") {
+    } else if (recordedEvent.type === "model_response") {
       // Accumulate live so summaries show token totals mid-run.
-      summary.usage.inputTokens += event.usage.inputTokens;
-      summary.usage.outputTokens += event.usage.outputTokens;
-    } else if (event.type === "run_finished") {
-      summary.status = event.status;
-      summary.iterations = event.iterations;
-      summary.usage = { ...event.totalUsage };
+      summary.usage.inputTokens += recordedEvent.usage.inputTokens;
+      summary.usage.outputTokens += recordedEvent.usage.outputTokens;
+    } else if (recordedEvent.type === "run_finished") {
+      summary.status = recordedEvent.status;
+      summary.iterations = recordedEvent.iterations;
+      summary.usage = { ...recordedEvent.totalUsage };
       summaryChanged = true;
     }
 
-    this.broadcast({ type: "trace", runId: summary.id, event });
+    this.broadcast({ type: "trace", runId: summary.id, event: recordedEvent });
     if (summaryChanged) {
       this.broadcast({ type: "run_updated", run: summary });
     }
 
     // Right after run_started lands, let the environment publish its initial
     // state (the opening board) so it sits before the first model turn.
-    if (event.type === "run_started") {
+    if (recordedEvent.type === "run_started") {
       record.environment.onRunStart?.();
     }
 
     // When the run ends, tear down any per-run resources (e.g. the coding
     // environment's temp sandbox) and notify any eval waiting on this run.
     // Best-effort — cleanup must never throw.
-    if (event.type === "run_finished") {
+    if (recordedEvent.type === "run_finished") {
       this.cleanup(record);
-      this.notifyFinished(record, event);
+      this.notifyFinished(record, recordedEvent);
     }
   }
 

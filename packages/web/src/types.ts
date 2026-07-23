@@ -13,6 +13,12 @@ export type Provider = "mock" | "anthropic" | "ollama" | "claude-cli";
 
 export type Environment = "coding" | "sokoban" | "browser";
 
+export type IsolationLevel =
+  | "local-process"
+  | "restricted-command"
+  | "docker"
+  | "unknown";
+
 /** Top-level dashboard view. */
 export type View = "runs" | "evals";
 

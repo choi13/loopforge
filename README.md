@@ -2,9 +2,14 @@
 
 [![CI](https://github.com/choi13/loopforge/actions/workflows/ci.yml/badge.svg)](https://github.com/choi13/loopforge/actions/workflows/ci.yml)
 
-**An agent-loop engineering, observability, and evaluation platform.** LoopForge takes the loop at the heart of every modern AI agent — *observe → reason → act → verify* — and makes it a first-class, observable object instead of a black box: every model turn, thinking block, tool call, and result streams live to a trace dashboard as a structured event. The same loop runs interchangeably against four model providers (a scripted mock, a local Ollama model, the logged-in Claude Code CLI, or the Claude API) and three pluggable environments (a sandboxed coding project, a Sokoban game arena, and a Playwright-driven web-QA browser hunting a planted bug in a seeded shop), and a deterministic eval harness runs whole task suites as scored runs and ranks providers — down to the specific model — on a live leaderboard.
+**A local-first AI agent observability and evaluation workbench.** LoopForge takes the loop at the heart of every modern AI agent — *observe → reason → act → verify* — and makes it a first-class, observable object instead of a black box: every model turn, thinking block, tool call, and result streams live to a trace dashboard as a structured event. The same loop runs interchangeably against four model providers (a scripted mock, a local Ollama model, the logged-in Claude Code CLI, or the Claude API) and three pluggable environments (a sandboxed coding project, a Sokoban game arena, and a Playwright-driven web-QA browser hunting a planted bug in a seeded shop), and a deterministic eval harness runs whole task suites as scored runs and ranks providers — down to the specific model — on a live leaderboard.
 
 > The agent loop is the heart of every modern AI agent. Most frameworks hide it behind a final answer. LoopForge inverts that: the loop emits a typed `TraceEvent` for every meaningful moment, and everything else — the server, the dashboard, the scorer — is just a consumer of that one event stream.
+
+> **Trust boundary:** LoopForge is for trusted local/development-team use. Do
+> not expose it as an unauthenticated service or accept anonymous coding tasks.
+> See [ADR 0001](docs/adr/0001-local-first-trust-boundary.md) and
+> [Security and isolation](docs/SECURITY.md).
 
 <p align="center">
   <img src="docs/images/coding-diff.png" alt="LoopForge dashboard: a coding run streaming live with a file-diff panel" width="900">

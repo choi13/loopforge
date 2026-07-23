@@ -7,18 +7,52 @@ import { RunManager, type ServerMessage } from "./run-manager";
 import { EvalManager, type EvalMessage } from "./eval-manager";
 import { getSuite, listSuites, toPublicTask } from "./eval/suites";
 import { startTargetSite } from "./target-site";
+import {
+  configuredBrowserOrigins,
+  getCommandExecutorMode,
+  isAllowedBrowserOrigin,
+  isAllowedLoopbackHost,
+  isolationLevelForMode,
+  LOCAL_BIND_HOST,
+} from "./local-boundary";
 
 const PORT = 8787;
 const TARGET_SITE_PORT = 8788;
+const commandExecutorMode = getCommandExecutorMode();
+const allowedBrowserOrigins = configuredBrowserOrigins();
 
 const app = express();
-app.use(cors());
+app.use((req, res, next) => {
+  if (!isAllowedLoopbackHost(req.get("host"))) {
+    res.status(403).json({ error: "LoopForge accepts loopback Host headers only" });
+    return;
+  }
+  if (!isAllowedBrowserOrigin(req.get("origin"), allowedBrowserOrigins)) {
+    res.status(403).json({ error: "Browser origin is not allowed" });
+    return;
+  }
+  next();
+});
+app.use(
+  cors({
+    origin: [...allowedBrowserOrigins],
+  }),
+);
 app.use(express.json());
 
 const server = http.createServer(app);
 
 const sockets = new Set<WebSocket>();
-const wss = new WebSocketServer({ server, path: "/ws" });
+const wss = new WebSocketServer({
+  server,
+  path: "/ws",
+  verifyClient: (info, done) => {
+    const allowed =
+      isAllowedLoopbackHost(info.req.headers.host) &&
+      isAllowedBrowserOrigin(info.origin, allowedBrowserOrigins);
+    done(allowed, 403, allowed ? undefined : "Loopback origin required");
+  },
+});
 wss.on("connection", (socket) => {
   sockets.add(socket);
   socket.on("close", () => sockets.delete(socket));
@@ -59,7 +93,11 @@ function parseModel(
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    bindHost: LOCAL_BIND_HOST,
+    isolationLevel: isolationLevelForMode(commandExecutorMode),
+  });
 });
 
 app.get("/api/runs", (_req, res) => {
@@ -250,13 +288,13 @@ const jsonErrorHandler: ErrorRequestHandler = (err, _req, res, next) => {
 };
 app.use(jsonErrorHandler);
 
-server.listen(PORT, () => {
-  console.log(`LoopForge server listening on http://localhost:${PORT}`);
+server.listen(PORT, LOCAL_BIND_HOST, () => {
+  console.log(`LoopForge server listening on http://${LOCAL_BIND_HOST}:${PORT}`);
 });
 
 // The seeded QA target the browser environment tests against.
-startTargetSite(TARGET_SITE_PORT).once("listening", () => {
+startTargetSite(TARGET_SITE_PORT, LOCAL_BIND_HOST).once("listening", () => {
   console.log(
-    `LoopMart demo shop (QA target) listening on http://localhost:${TARGET_SITE_PORT}`,
+    `LoopMart demo shop (QA target) listening on http://${LOCAL_BIND_HOST}:${TARGET_SITE_PORT}`,
   );
 });
