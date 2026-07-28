@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>/Users/sbchoi</string>
+		<key>LOOPFORGE_ALLOWED_WEB_ORIGINS</key>
+		<string>https://loop.sbchoi-api.kr</string>
+		<key>LOOPFORGE_COMMAND_EXECUTOR</key>
+		<string>docker</string>
+		<key>PATH</key>
+		<string>/Users/sbchoi/.local/bin:/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+	</dict>
+	<key>KeepAlive</key>
+	<true/>
+	<key>Label</key>
+	<string>com.sbchoi.loopforge-server</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/opt/node@24/bin/npm</string>
+		<string>run</string>
+		<string>start</string>
+		<string>-w</string>
+		<string>@loopforge/server</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/Users/sbchoi/Library/Logs/loopforge-server.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/sbchoi/Library/Logs/loopforge-server.out.log</string>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>WorkingDirectory</key>
+	<string>/Users/sbchoi/workspace/loopforge</string>
+</dict>
+</plist>
