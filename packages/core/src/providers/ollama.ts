@@ -5,10 +5,10 @@ import { buildReactSystemPrompt, reactActionToTurn } from "./react";
 /**
  * Local-model provider backed by Ollama — no API key, no cost.
  *
- * The small local models here only advertise `completion` (no native tool
- * calling), so this provider uses the shared ReAct adapter: it augments the
- * system prompt with the tool list and a strict JSON action format, then
- * parses the model's text back into a single tool call per turn.
+ * This provider deliberately uses the shared ReAct adapter instead of native
+ * tool-calling: it augments the system prompt with the tool list and a strict
+ * JSON action format, then parses the model's text back into a single tool
+ * call per turn.
  */
 
 interface OllamaMessage {
@@ -26,7 +26,7 @@ export class OllamaProvider implements ModelProvider {
   readonly name = "ollama";
 
   constructor(
-    readonly model: string = "llama3:latest",
+    readonly model: string = "qwen3:14b",
     private readonly baseUrl: string = "http://localhost:11434",
   ) {}
 

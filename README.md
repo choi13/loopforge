@@ -48,7 +48,7 @@
 
 - **Four interchangeable providers, one loop.** Swap the model backing the exact same loop with no code changes:
   - **Run a real frontier model with *no API key*** — `claude-cli` drives your locally-installed, logged-in Claude Code CLI as a single-turn model (its own tools disabled, our loop runs the tools).
-  - **Run a real model for *free*** — `ollama` drives a local model (e.g. `llama3`) through a ReAct JSON adapter — no key, no per-token cost.
+  - **Run a real model for *free*** — `ollama` drives the default `qwen3:14b` (or an explicitly selected alternative such as `llama3`) through a ReAct JSON adapter — no key, no per-token cost.
   - **Zero-setup demo** — `mock` replays deterministic scripts whose tool calls *execute for real*, so the demo genuinely runs without any key.
   - **Live API** — `anthropic` calls the Claude API directly with adaptive extended thinking.
 - **Three pluggable environments.** A whole new domain plugs in behind one `RunEnvironment` interface without touching the loop: a sandboxed **coding** project (four path-confined tools + a planted bug to fix, with live file diffs in the dashboard), a **sokoban** game arena (an in-memory engine with a live, animated board), and a **browser** web-QA arena — a Playwright-driven headless Chromium the agent uses to test the seeded **LoopMart** demo shop, whose checkout carries a planted bug (`POST /order` always 500s) for the agent to find and report.
@@ -107,11 +107,11 @@ The same agent loop runs against all four providers; the two local ones (Ollama,
 | Provider | What it is | API key? | Cost | Native tool-calling? |
 |---|---|---|---|---|
 | **`mock`** | Scripted, deterministic steps — but its tool calls execute for real | No | None | n/a (script emits calls) |
-| **`ollama`** | A local model via Ollama (`llama3:latest` default) | No | None (local compute) | No — uses the ReAct adapter |
+| **`ollama`** | A local model via Ollama (`qwen3:14b` default) | No | None (local compute) | No — uses the ReAct adapter |
 | **`claude-cli`** | The logged-in Claude Code CLI (`claude -p`) driven as a single-turn model | No — uses the CLI's account | Real per-iteration account usage | No — CLI tools disabled on purpose |
 | **`anthropic`** | The Claude API via `@anthropic-ai/sdk` (`claude-opus-4-8` default) | **Yes** — `ANTHROPIC_API_KEY` | Paid API tokens | **Yes** — the only native-tools provider |
 
-Every provider works in both the **Runs** view and the **Eval** harness. Running the demo suite under a real local model produces an honest capability profile — e.g. `llama3` typically solves the coding bug-fix but not Sokoban, landing the eval near 50%, right next to `mock`'s designed 2-pass/2-fail. Full contract, per-provider internals, and the ReAct adapter: **[docs/PROVIDERS.md](docs/PROVIDERS.md)**.
+Every provider works in both the **Runs** view and the **Eval** harness. Running the demo suite under a real local model produces an honest, model- and run-specific capability profile. Any earlier `llama3` demo result is an alternative-model example, not a performance claim for the default `qwen3:14b`. Full contract, per-provider internals, and the ReAct adapter: **[docs/PROVIDERS.md](docs/PROVIDERS.md)**.
 
 ## Quickstart
 
@@ -131,7 +131,7 @@ Open **http://localhost:5173** and start a **mock** run — no setup required. T
 
 To try the **Web QA (browser)** environment — the agent drives a real headless Chromium against the seeded LoopMart shop (which the server hosts on `:8788`) and hunts its planted checkout bug — install the browser binary once: `npx playwright install chromium` (~95 MB). This step is optional: the server and the other two environments run fine without it (browser tools just error with that install hint). With it installed, the `web-qa` eval suite (deliberately 1 pass / 1 fail under `mock`) shows the scorer separating a QA run that finds the bug from one that merely browses.
 
-Vite proxies `/api` and `/ws` to `:8787`, so the dashboard talks to the server transparently. To try a real model with no API key, install [Ollama](https://ollama.com) (`ollama pull llama3`) and pick **Local (Ollama · llama3)**, or use the logged-in **Claude CLI (local account)** provider. Full setup — including each provider's prerequisites and the `.env` for the live API — is in **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
+Vite proxies `/api` and `/ws` to `:8787`, so the dashboard talks to the server transparently. To try a real model with no API key, install [Ollama](https://ollama.com) (`ollama pull qwen3:14b`) and pick **Local (Ollama · qwen3:14b)**, or use the logged-in **Claude CLI (local account)** provider. Full setup — including each provider's prerequisites and the `.env` for the live API — is in **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
 
 ## Documentation
 

@@ -74,7 +74,7 @@ The request is assembled in one place — `provider.complete({ system, messages,
 | Provider | What it is | API key? | Cost | Native tool-calling? | Adapter |
 |---|---|---|---|---|---|
 | **`mock`** | Scripted `MockStep[]`; deterministic; tool calls execute for real | No | None | n/a (script emits calls directly) | none |
-| **`ollama`** | Local model via Ollama HTTP (`llama3:latest` default) | No | None (local compute) | No — model advertises only `completion` | ReAct |
+| **`ollama`** | Local model via Ollama HTTP (`qwen3:14b` default) | No | None (local compute) | No — provider uses ReAct | ReAct |
 | **`claude-cli`** | The locally-installed Claude Code CLI (`claude -p`, `sonnet` default) driven as a single-turn model | No — uses the CLI's logged-in account | **Real per-iteration cost/quota** on that account | No — tools disabled on purpose | ReAct (planner mode) |
 | **`anthropic`** | The Claude API via `@anthropic-ai/sdk` (`claude-opus-4-8` default) | **Yes** — `ANTHROPIC_API_KEY` | Paid API tokens | **Yes** — the only native-tools provider | none |
 
@@ -124,7 +124,7 @@ return { ok: true, model: trimmed || undefined };
 
 | Provider | Default model |
 |---|---|
-| `ollama` | `llama3:latest` |
+| `ollama` | `qwen3:14b` |
 | `claude-cli` | `sonnet` |
 | `anthropic` | `claude-opus-4-8` |
 
@@ -162,7 +162,7 @@ Scripts come from two places (`packages/server/src/run-manager.ts`): an eval can
 
 `OllamaProvider` (`packages/core/src/providers/ollama.ts`) talks to a local Ollama server (`http://localhost:11434/api/chat`) with `stream: false` and a low temperature (`0.2`, `num_ctx: 8192`) for steadier format adherence from small models.
 
-The small local models here advertise only the `completion` capability — **no native tool calling** — so the provider leans entirely on the shared **ReAct adapter**. It builds an augmented system prompt with the tool list and JSON contract, maps the neutral history to Ollama's `{role, content}` messages, and parses the model's raw text back into a single tool call:
+`OllamaProvider` deliberately leans on the shared **ReAct adapter** instead of passing native tool definitions through. It builds an augmented system prompt with the tool list and JSON contract, maps the neutral history to Ollama's `{role, content}` messages, and parses the model's raw text back into a single tool call:
 
 ```ts
 // packages/core/src/providers/ollama.ts

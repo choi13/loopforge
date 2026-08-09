@@ -63,13 +63,13 @@ All four drive the **same** `AgentLoop`; they differ only in what backs the mode
 | Provider | Backing model | Local prerequisite | API key / cost |
 |---|---|---|---|
 | **mock** | Scripted `MockProvider` (`packages/core/src/providers/mock.ts`) | **Nothing.** Deterministic scripts, but tool calls execute for real. | None |
-| **ollama** | Local model via `OllamaProvider` | A running [Ollama](https://ollama.com) daemon with a pulled model. Defaults to `llama3:latest` at `http://localhost:11434`. | None |
+| **ollama** | Local model via `OllamaProvider` | A running [Ollama](https://ollama.com) daemon with a pulled model. Defaults to `qwen3:14b` at `http://localhost:11434`. | None |
 | **claude-cli** | The locally-installed `claude` Code CLI, driven as a model | The `claude` CLI on `PATH` and **logged in** to an account. | Uses the CLI's account quota (no separate key) |
 | **anthropic** | Claude API via `AnthropicProvider` | — | `.env` with `ANTHROPIC_API_KEY` |
 
 Details worth knowing:
 
-- **ollama** — install Ollama, then `ollama pull llama3`, then pick the local provider in the dashboard. Local completion models have no native tool-calling, so `OllamaProvider` routes through the shared **ReAct JSON adapter** (`packages/core/src/providers/react.ts`): the model emits a JSON action and *our* loop runs the tool.
+- **ollama** — install Ollama, then `ollama pull qwen3:14b`, then pick the local provider in the dashboard. `OllamaProvider` deliberately routes through the shared **ReAct JSON adapter** (`packages/core/src/providers/react.ts`) rather than native tool-calling: the model emits a JSON action and *our* loop runs the tool.
 - **claude-cli** — `ClaudeCliProvider` (`packages/core/src/providers/claude-cli.ts`) spawns `claude -p` per turn with the CLI's own tools disabled (a no-op `--allowedTools` allowlist) and a planner-framed ReAct system prompt, so the CLI returns *our* JSON action and LoopForge's loop executes it against the sandbox/game tools. Each iteration is one `claude -p` call — real account quota, meant for showcasing a frontier model locally, not high-volume runs.
 - **anthropic** — copy the template and paste a key; the server auto-loads it at startup (`packages/server/src/load-env.ts`).
 

@@ -20,7 +20,7 @@ const MOCK_PLACEHOLDERS: Record<Environment, string> = {
 
 /** Placeholder = each provider's default model (used when the field is empty). */
 export const MODEL_PLACEHOLDERS: Record<Exclude<Provider, "mock">, string> = {
-  ollama: "llama3:latest (default)",
+  ollama: "qwen3:14b (default)",
   "claude-cli": "sonnet (default)",
   anthropic: "claude-opus-4-8 (default)",
 };
@@ -104,7 +104,7 @@ export function NewRunForm({ onStart }: Props) {
         onChange={handleProvider}
       >
         <option value="mock">Mock (scripted demo)</option>
-        <option value="ollama">Local (Ollama · llama3)</option>
+        <option value="ollama">Local (Ollama · qwen3:14b)</option>
         <option value="claude-cli">Claude CLI (local account)</option>
         <option value="anthropic">Anthropic (live API)</option>
       </select>
